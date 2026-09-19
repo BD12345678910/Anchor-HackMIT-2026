@@ -1,144 +1,145 @@
 # Anchor
 
-Anchor is a Windows attention-support prototype for people with ADHD and related executive-function difficulties. It behaves like a background writing assistant: the user declares one concrete task, Anchor quietly observes local interaction patterns, and it appears only when prevention or recovery may help.
+Anchor is a Windows attention-support assistant for people with ADHD and related executive-function difficulties. Like Grammarly, it lives quietly in the background: Settings is used to configure a task, gaze, and the toolkit; the notification-area icon and small Goal Beacon remain available while the user works in browsers or desktop apps.
 
-This is an assistive hackathon project, not a diagnostic tool or medical device. It estimates uncertain interaction states and can be wrong.
+Anchor is assistive software, not a diagnostic tool or medical device. Its attention state is an estimate and can be wrong.
 
-## What is implemented
+## Release quick start
 
-- A native Windows 11 dashboard and background session host
-- A persistent Goal Beacon showing the current intention
-- Attention inference from foreground-app relevance, idle time, app switching, mouse distance, keyboard-category counts, scroll loops, worker availability, and manual reports
-- Explicit `Focused`, `Drifting`, `Distracted`, `Recovering`, `Stuck`, and `Unknown` states with confidence and reason codes
-- Active prevention through beacon pulses, a visual filter, an intention gate, and an opt-in pointer guard
-- Passive Context Capsules that preserve the last safe task location, prior action, and suggested next action
-- A global **I'm distracted** recovery path that bypasses automatic thresholds
-- A recovery card with Resume, Reopen, Recap, Break down, and Dismiss actions
-- Focus time, interruption count, recovery time, and an event timeline stored in local SQLite
-- A Manifest V3 browser adapter with dynamic image blur, future-text masking, reading-skip detection, stuck-phrase detection, and protected-page exclusions
-- Authenticated loopback gRPC between the C# host and a local Python inference worker, with deadlines, restart limits, and deterministic fallback
-- Emergency release through `Esc`, focus loss, `Ctrl+Shift+F12`, secure-window detection, shutdown, and a fail-open watchdog
-- Deterministic replay scenarios for drift, interruption recovery, and stuck reading
+The generated portable release is `release/Anchor-win-x64`.
 
-The complete product and function specification is in [the approved design](docs/superpowers/specs/2026-09-19-anchor-general-task-assistant-design.md).
+1. Run `Anchor.exe`. No Python or .NET installation is required.
+2. In **DeepSeek intelligence**, optionally enter an API key, enable DeepSeek, and save. Without it, Anchor uses a clearly labeled local fallback plan and relevance model.
+3. In **Test Gaze**, select **Find cameras**, choose a camera, select **Start**, tune mirror/rotation/offset/smoothing/sensitivity, and complete the nine-point calibration if needed.
+4. Enter a goal, select **Plan goal**, review the subtasks, and select **Start focus session**.
+5. Closing Settings hides it; Anchor keeps running from its stationary notification-area icon. Use `Ctrl+Shift+A` to reopen Settings.
 
-## System architecture
+Safety controls:
+
+- `Ctrl+Shift+F12`: report distraction and open the saved context reminder immediately.
+- `Esc`: immediately release overlays and pointer restrictions.
+- Notification-area menu: open Settings, report distraction, emergency release, or exit Anchor.
+
+## Implemented system
+
+- Computer-vision gaze estimation using OpenCV and MediaPipe, with camera discovery, live preview, adjustable calibration, confidence, face-presence, and fail-open behavior.
+- Multimodal attention fusion across gaze, foreground app and redacted title, semantic relevance, idle time, app switches, mouse distance, scroll reversals, and keyboard-category counts. Raw keys are never stored.
+- DeepSeek-powered goal decomposition, subtask breakdown, and task-relevance classification, with timeouts and deterministic fallback.
+- A Goal Beacon that shows the current subtask, advances when the user completes a step, and pulses/shakes when sustained evidence indicates drift.
+- Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, dynamic browser image blur, future-text masking, and reversible animation suppression.
+- Passive recovery: a Context Capsule saves the most recent safe task anchor before distraction. Manual and automatic recovery can show the prior location, last action, next step, recap, reopen, and smaller-step controls.
+- Reading support: progress tracking, large-skip detection, and repeated-phrase dwell detection.
+- Local study recording: Display 1 at 15 FPS with gaze point and task state composited into MP4, plus aligned event JSONL, gaze/sample CSV, summary JSON, and manifest JSON. Baseline mode senses but suppresses interventions.
+- A **Compare recordings** control that compares one baseline and one Anchor-enabled summary without claiming clinical significance.
+- Local SQLite timeline and focus/recovery metrics, protected-window suppression, authenticated local IPC, watchdog release, and deterministic replay scenarios.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    U[Task title and user controls] --> H[WinUI host]
-    W[Foreground window] --> F[Privacy-safe feature windows]
-    M[Mouse and scroll summaries] --> F
-    K[Keyboard category counts] --> F
-    I[Idle and app-switch events] --> F
-    B[Browser adapter] --> F
-    F --> R[Task relevance and temporal state engine]
-    H --> R
-    R <--> P[Python inference worker over authenticated loopback gRPC]
-    R --> C[Context Capsule manager]
-    R --> D[Intervention policy]
-    D --> G[Goal Beacon]
-    D --> V[Visual filter and intention gate]
-    D --> Q[Recovery card]
-    C --> Q
-    R --> T[Progress tracker]
-    C --> S[(Local SQLite)]
-    T --> S
-    X[Safety watchdog] --> G
-    X --> V
-    X --> Q
+    subgraph Inputs
+        C[Camera frames]
+        W[Foreground window]
+        MK[Mouse, scroll, keyboard categories]
+        BA[Browser reading adapter]
+        MR[Manual distraction button]
+    end
+
+    C --> CV[OpenCV + MediaPipe gaze worker]
+    W --> PF[Privacy-safe feature extraction]
+    MK --> PF
+    BA --> PF
+    CV --> AF[Multimodal attention fusion]
+    PF --> AF
+    DS[DeepSeek task plan + relevance] --> AF
+    AF --> SM[Temporal state machine]
+    SM --> CP[Safe Context Capsule]
+    MR --> CP
+    SM --> IP[Intervention policy]
+    IP --> GB[Goal Beacon]
+    IP --> DT[Desktop overlays and pointer guard]
+    IP --> BT[Browser blur, mask, animation controls]
+    CP --> RC[Recovery reminder]
+    TP[Task-plan progress] --> GB
+    TP --> RC
+    SM --> REC[Local study recorder]
+    CV --> REC
+    IP --> REC
+    WD[Fail-open watchdog] --> DT
+    WD --> BT
 ```
 
-Raw keystrokes, pointer coordinates, microphone recordings, and continuous screenshots are not persisted. The browser adapter does not request browsing-history permission.
-
-## Runtime flow
-
-1. The user enters a concrete task title and starts a session.
-2. Windows sensors aggregate activity without storing typed content.
-3. The task-relevance and temporal engines combine multiple weak signals instead of treating one gaze, click, or idle period as proof.
-4. Anchor preserves the latest safe Context Capsule before any intervention.
-5. The intervention policy escalates from a beacon pulse to reversible visual friction or a recovery card.
-6. The user's response adjusts future sensitivity; dismissals make the detector less aggressive.
-7. Progress and recovery metrics remain on the device and can be deleted from the dashboard.
-
-## Technical stack
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| Windows host | .NET 10, C# 14, WinUI 3, Windows App SDK 2.5 | UI, native hooks, overlays, lifecycle, safety |
-| Core engine | Pure C# records and services | State machine, temporal evidence, policy, recovery, replay |
-| Persistence | Microsoft.Data.Sqlite, WAL mode | Local event history and deletion |
-| Worker IPC | gRPC, Protocol Buffers, random per-launch token | Bounded local process communication |
-| Inference worker | Python 3.11–3.12, NumPy, grpcio | Feature normalization and temporally smoothed scoring |
-| Optional vision | OpenCV and MediaPipe extras | Future coarse head-pose and gaze signals |
-| Browser adapter | Manifest V3 JavaScript and CSS | DOM-aware blur, reading masks, and progress signals |
-| Verification | xUnit, pytest, Node test runner | Domain, integration, worker, browser, and replay tests |
-
-## Run the project
-
-Requirements: Windows 11 x64, PowerShell, Node.js, and the project-local runtimes already present in `.tools` and `.venv`.
-
-```powershell
-./scripts/build.ps1
-```
-
-The script restores dependencies, runs the .NET, Python, browser, and replay suites, then publishes a self-contained single-file Windows build to `artifacts/Anchor-win-x64`. The executable extracts its bundled Windows App SDK dependencies to a temporary directory on first launch.
-
-For development launch with a temporary Windows App SDK identity:
-
-```powershell
-$env:DOTNET_CLI_HOME = "$PWD/.tools/dotnet-home"
-$env:NUGET_PACKAGES = "$env:DOTNET_CLI_HOME/.nuget/packages"
-./.tools/dotnet/dotnet.exe run --project src/Anchor.Desktop/Anchor.Desktop.csproj
-```
-
-Global controls while Anchor is running:
-
-- `Ctrl+Shift+F12`: report distraction and open recovery immediately
-- `Ctrl+Shift+A`: restore the hidden dashboard
-- `Esc`: release active overlays and pointer restrictions
+The desktop host and browser native bridge are self-contained .NET executables. The CV/recording worker is a bundled one-file Python executable. Their protocol version and a random per-launch authentication token are checked before use.
 
 ## Browser adapter
 
-1. Open the browser's extension-management page.
-2. Enable developer mode and choose **Load unpacked**.
-3. Select `browser/anchor-extension`.
-4. Click the Anchor extension on a page to enable support for that tab.
-
-The extension is opt-in per tab through `activeTab`. It excludes browser-internal URLs, password forms, payment forms, editable regions, dialogs, and user-denied origins. A native messaging host registration is optional; without it, page-local visual and reading tools still work.
-
-## Deterministic demos
+1. Open `chrome://extensions` or `edge://extensions`.
+2. Enable developer mode, select **Load unpacked**, and choose `browser-extension` from the release folder (or `browser/anchor-extension` in the repository).
+3. Copy the extension ID shown by the browser.
+4. In PowerShell, from the release folder, run:
 
 ```powershell
-./scripts/run-demo.ps1 -Scenario all
-./scripts/run-demo.ps1 -Scenario focused-to-distracted
-./scripts/run-demo.ps1 -Scenario interrupted-and-returned
-./scripts/run-demo.ps1 -Scenario stuck-reading
+.\register-browser-bridge.ps1 -ExtensionId YOUR_32_CHARACTER_EXTENSION_ID
 ```
 
-The replay files are ordinary JSON Lines under `demo/replay`. Their expected states and interventions are asserted by the test suite, so the demo is repeatable even without a camera, browser extension, or network connection. See [the demo guide](docs/demo-script.md).
+5. Click the Anchor extension once on each site where support should be enabled. Permission is opt-in per origin and survives navigation on that origin.
+
+The extension excludes browser-internal pages, password/payment/editable fields, dialogs, media, and user-denied origins. Remove the native registration with `./unregister-browser-bridge.ps1`.
+
+## Build from source
+
+Requirements: Windows 11 x64, PowerShell, Node.js, and the repository's `.tools` and `.venv` environments.
+
+```powershell
+.\scripts\build.ps1
+```
+
+The build restores dependencies, runs 73 core tests, 41 infrastructure tests, 32 worker tests, 12 browser tests, and three deterministic replay audits. It then publishes and launches the self-contained release as a smoke test. Output: `release/Anchor-win-x64`.
+
+For a faster development-only verification without packaging:
+
+```powershell
+.\scripts\build.ps1 -SkipPublish
+```
+
+Deterministic demos:
+
+```powershell
+.\scripts\run-demo.ps1 -Scenario all
+```
+
+## Study recording
+
+Use a pseudonymous participant code. Start a planned focus session before recording. Record comparable activities and durations in this order:
+
+1. Select **Baseline · interventions off**, start recording, perform the task, then stop.
+2. Select **Anchor enabled**, repeat the task with Anchor support, then stop.
+3. Select **Compare recordings** and choose the baseline summary followed by the enabled summary.
+
+The report shows deltas in usable gaze coverage, gaze-away time, distracted/low-relevance time, interruption count, recovery time, and completed subtasks. It is observational evidence from a prototype, not a clinical result.
 
 ## Repository map
 
 ```text
-src/Anchor.Core             domain, attention engine, policy, recovery, replay
-src/Anchor.Infrastructure   SQLite, Windows sensors, safety, worker lifecycle
-src/Anchor.Desktop          WinUI dashboard and overlays
-src/Anchor.Worker           local Python inference worker
-src/Anchor.Demo             deterministic scenario runner
-browser/anchor-extension    optional DOM-aware browser adapter
+src/Anchor.Core             task plans, fusion, state, policy, recovery, replay
+src/Anchor.Infrastructure   DeepSeek, persistence, Windows sensors, IPC, safety
+src/Anchor.Desktop          WinUI Settings, tray lifecycle, overlays, recording UI
+src/Anchor.Worker           camera gaze and screen-recording worker
+src/Anchor.NativeBridge     browser-to-desktop native messaging adapter
+browser/anchor-extension    DOM-aware browser support
 tests                       C# unit and integration tests
-demo/replay                 reproducible hackathon stories
+demo/replay                 reproducible scenarios
 docs                        design, privacy, and demo documentation
-scripts                     build and demo entry points
+scripts                     build, verification, demo, and bridge setup
 ```
 
-## Known prototype limits
+## Honest prototype limits
 
-- Camera, audio, OCR, semantic embeddings, and application-specific Office/VS Code adapters remain extension points rather than required MVP dependencies.
-- Cross-application picture blur is represented by a safe dimming overlay; true object-level blur is implemented only in the browser adapter.
-- Automatic workspace reopening is deliberately conservative; the recovery card shows the saved identity instead of launching an untrusted target.
-- Native messaging registration is not installed automatically.
-- The dashboard hides to the background during an active session and is restored by shortcut; a signed installer and notification-area packaging are post-hackathon work.
+- The release is unsigned; Windows may display an unknown-publisher warning.
+- Browser DOM controls require the unpacked extension and native-host registration.
+- Object-level picture blur is available in browser pages; desktop apps receive safe dimming/spotlight overlays rather than OCR-based object segmentation.
+- Webcam video and audio are not recorded. The camera is used live for gaze inference; recording captures the desktop, gaze marker, task state, and structured events.
+- Gaze quality depends on lighting, camera placement, eyewear, and calibration. Missing or low-confidence gaze becomes `Unknown`; it is not treated as proof of distraction.
+- Site sign-in, DRM/protected pages, and secure Windows surfaces can limit interventions or recording.
 
-See [privacy and safety](docs/privacy.md) before testing with real work.
+Read [privacy and safety](docs/privacy.md) before testing with real work. The full accepted design is [here](docs/superpowers/specs/2026-09-20-anchor-release-rebuild-design.md).

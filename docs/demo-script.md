@@ -1,82 +1,100 @@
 # Anchor Hackathon Demo Script
 
-This demonstration shows one closed loop: declare an intention, detect sustained drift, prevent a detour, restore context, and measure the return. It takes about four minutes and remains reproducible if the inference worker or browser extension is unavailable.
+This seven-minute demo shows a complete loop: configure gaze, convert an intention into trackable steps, detect drift from several signals, prevent a detour, restore context, and compare a with/without-Anchor recording.
 
-## Preparation
+## Before judges arrive
 
-1. Run `./scripts/build.ps1` and confirm all suites pass.
-2. Optionally load `browser/anchor-extension` as an unpacked extension.
-3. Start Anchor through the development command in the README or from the published output.
-4. Keep `./scripts/run-demo.ps1 -Scenario all` ready as deterministic evidence.
-5. Use only the included demo text; avoid personal accounts or sensitive documents.
+1. Build with `./scripts/build.ps1` and run `release/Anchor-win-x64/Anchor.exe`.
+2. Load the release's `browser-extension` folder unpacked in Chrome or Edge, register its displayed ID with `register-browser-bridge.ps1`, and click the extension on the demo origin once.
+3. Use public/non-sensitive material. Good choices are an article or problem on `usaco.guide`, `usaco.org`, `codeforces.com`, `luogu.com.cn`, or a local PDF. Avoid signing into school, College Board, or personal YouTube accounts during recording.
+4. Keep `./scripts/run-demo.ps1 -Scenario all` ready as deterministic backup evidence.
+5. Keep the notification-area icon visible and know the safety keys: `Esc`, `Ctrl+Shift+A`, and `Ctrl+Shift+F12`.
 
-## Story 1 Declare the task
+## 1. Prove gaze is real and adjustable — 60 seconds
 
-Enter **Review the attention research paper** and start the session.
+Open **Test Gaze**, select **Find cameras**, choose the webcam, and select **Start**. Move your eyes between screen corners and point out the live normalized coordinates, confidence, and face-present behavior.
 
-Point out the compact Goal Beacon and the capability label. Explain that the worker can disappear without ending the session because deterministic inference remains in the host. The dashboard reports estimates and reasons, not a medical score.
+Demonstrate one harmless adjustment, such as mirror or horizontal offset, then select **Apply adjustments**. If camera placement is unusual, complete the nine points: look at the named location, hold still, and select **Capture point**. Explain that OpenCV captures locally, MediaPipe estimates face/iris landmarks, calibration maps the estimate to the screen, and low-confidence/missing-face samples become unknown rather than “distracted.”
 
-## Story 2 Active prevention
+## 2. Plan a goal and show dynamic progress — 60 seconds
 
-Run:
+Optionally show that DeepSeek is enabled without exposing the key. Enter:
 
-```powershell
-./scripts/run-demo.ps1 -Scenario focused-to-distracted
-```
+> Solve three USACO practice problems and check each solution.
 
-The replay shows `Focused → Drifting → Distracted`. The proportional intervention path is `None → BeaconPulse → IntentionGate`. Explain that a single noisy sample cannot reach `Distracted`; the state requires sustained evidence. The gate offers Return, Continue, Park for later, and Disable gates.
+Select **Plan goal**. Show the numbered subtasks and plan source. Explain that the LLM returns a constrained structured plan; malformed or unavailable responses fall back locally. Start the session, show the Goal Beacon on the active monitor, complete one subtask, and show that both Settings and the beacon advance to the next step.
 
-In the live app, enable **Pointer guard** only if there is time to demonstrate the fail-open path. Press `Esc` and show that overlays and confinement clear immediately.
+Select **Test attention shake**. The stationary beacon should pulse/shake and then settle; this is the same attention-grabbing behavior used only after sustained evidence, with reduced-motion support.
 
-## Story 3 Manual and passive recovery
+## 3. Show active prevention in desktop and browser — 90 seconds
 
-Press **I'm distracted** or `Ctrl+Shift+F12`. The recovery card should appear without waiting for detector confidence.
+Open the approved reading/problem page. In Settings, use the preview controls to show:
 
-Show the saved task title, last anchor, and suggested next action. Use **Recap** and **Break down**, then select **Resume**. Emphasize that context preservation runs even when active prevention is disabled.
+- gaze spotlight and peripheral dim;
+- low-relevance window firewall;
+- intention gate;
+- optional pointer guard, followed immediately by `Esc` to prove fail-open release.
 
-Run:
+On the browser page show dynamic image blur, hide-future-text, and animation suppression. Scroll normally, make a large forward jump, and dwell on one phrase. Explain that the adapter reports coarse progress/skip/stuck evidence; it does not read browser history or modify protected inputs. Hover/reveal or disable the mechanism to show reversibility.
 
-```powershell
-./scripts/run-demo.ps1 -Scenario interrupted-and-returned
-```
-
-The expected state path ends in `Focused`, and the replay reports an interruption and recovery.
-
-## Story 4 Reading adapter
-
-On a safe article page, activate the Anchor extension. Show dynamic image softening and temporarily reveal an image by hovering. Enable future-text masking in the extension options if desired.
-
-Run:
+If a live distraction takes too long to accumulate, run:
 
 ```powershell
-./scripts/run-demo.ps1 -Scenario stuck-reading
+.\scripts\run-demo.ps1 -Scenario focused-to-distracted
 ```
 
-The repeated scroll loop enters `Stuck` and opens a Recovery Card. The extension also detects large forward skips and repeated phrase dwell, which can supply richer evidence than the desktop layer alone.
+The audited path is `Focused → Drifting → Distracted`, escalating from a beacon pulse to an intention gate only after sustained evidence.
 
-## Story 5 Privacy and degraded operation
+## 4. Show passive and manual recovery — 60 seconds
 
-State the retained features: categories and counts, not raw keys or coordinates. Open the dashboard privacy section and show **Delete local history**. Stop the session before deletion.
+Move to an unrelated page or window, then select **I'm distracted** or press `Ctrl+Shift+F12`. The context reminder should appear immediately even if automatic detection is uncertain.
 
-If asked about the worker, stop it and explain that the next prediction uses deterministic fallback with a `worker_unavailable` reason rather than ending the session. Password, payment, permission, and secure windows suppress interventions.
+Show that it uses the last safe anchor, not the distracting window: goal, current subtask, prior action, saved origin/document marker, and suggested next action. Demonstrate **Recap**, **Break down**, and **Resume/Reopen**. Breakdown uses DeepSeek when available and returns a labeled local smaller step otherwise.
 
-## Judge questions
+Run the deterministic backup if needed:
 
-**How is this different from an app blocker?** Anchor models task relevance and attention continuity, preserves context before intervening, and supports recovery rather than only denying access.
+```powershell
+.\scripts\run-demo.ps1 -Scenario interrupted-and-returned
+.\scripts\run-demo.ps1 -Scenario stuck-reading
+```
 
-**Why is it technically difficult?** It combines native Windows event hooks, bounded event flow, temporal sensor fusion, an explicit state machine, authenticated process isolation, DOM-level browser adaptation, local persistence, and fail-open safety.
+## 5. Record and compare — 90 seconds
 
-**What is actually working?** The repository contains the Windows host, sensor aggregation, deterministic and Python inference paths, prevention/recovery overlays, browser adapter, local history, automated tests, and deterministic end-to-end replays.
+Use participant code `DEMO01` and a dedicated empty folder.
 
-**What remains future work?** Opt-in gaze/head-pose, audio transients, OCR/UI Automation saliency, application-specific adapters, learned personalization, signed packaging, and formal user evaluation.
+1. Start a planned session. Choose **Baseline · interventions off**, select **Start recording**, perform a short fixed reading task, and stop. Point out that sensing stays active while interventions are suppressed.
+2. Repeat the same task and approximate duration with **Anchor enabled**.
+3. Select **Compare recordings**, choose the baseline summary, then the Anchor-enabled summary.
+
+Open the output folder and play one MP4. It should show Display 1 with the gaze marker and task state. Briefly show that MP4, event JSONL, sample CSV, summary, and manifest are paired. The comparison reports deltas for gaze coverage, gaze-away time, distracted/low-relevance time, interruptions, recovery time, and completed subtasks, followed by an observational-only disclaimer.
+
+Say explicitly: camera frames and audio are not recorded; screen recording happens only between the two visible recording controls and stays in the selected folder.
+
+## 6. Background behavior and close — 30 seconds
+
+Close Settings. The window disappears but the stationary notification-area icon and active session remain. Reopen with `Ctrl+Shift+A` or the icon. Use **Exit Anchor** from the icon to demonstrate ordered shutdown.
+
+## Judge answers
+
+**Why is this more than an app blocker?** Anchor estimates continuity relative to a declared task, preserves the last safe context before intervention, guides return, and tracks progress through meaningful subtasks. Blocking is only one optional, reversible mechanism.
+
+**What makes it technically complex?** It combines real-time computer vision, calibration, native Windows input/window sensing, semantic LLM calls, temporal multimodal fusion, desktop overlays, a DOM-aware extension, authenticated cross-process IPC, local persistence, synchronized study recording, and fail-open safety.
+
+**How do you avoid a gaze false positive?** Gaze is one confidence-weighted source. The engine also considers task relevance, app switches, idle/input patterns, browser reading behavior, and time. Missing gaze becomes unknown, and stronger interventions require sustained combined evidence and cooldowns.
+
+**What runs without the network?** Gaze, sensors, fusion, overlays, recovery storage, browser controls, recording, and deterministic fallback. DeepSeek planning/relevance degrades to a labeled local fallback.
+
+**What is not implemented?** Signed installation, desktop-wide OCR/object segmentation, webcam-video/audio recording, clinical validation, and reliable modification of protected/DRM surfaces.
 
 ## Success checklist
 
-- Goal Beacon displays the declared task
-- Manual report opens recovery immediately
-- Drift replay reaches the intention gate
-- Interruption replay returns to focused
-- Stuck-reading replay reaches recovery
-- `Esc` clears restrictive behavior
-- Worker absence leaves the session usable
-- Local history deletion empties the event store
+- Packaged `Anchor.exe` launches without Python or .NET installed.
+- Test Gaze discovers a camera or clearly reports no usable device.
+- Goal planning produces subtasks; completing one advances the beacon.
+- Beacon preview and attention shake are visible.
+- Browser blur/mask and desktop overlays can be previewed and reversed.
+- Manual distraction opens a visible context reminder immediately.
+- `Esc` releases restrictive behavior.
+- Baseline and enabled trials produce playable MP4 plus aligned metadata.
+- **Compare recordings** rejects invalid pairs and reports valid deltas.
+- Closing Settings leaves the tray host running; tray Exit shuts it down.
