@@ -27,6 +27,9 @@ dependencies = [
 test = [
   "pytest>=8.4,<9",
 ]
+build = [
+  "pyinstaller==6.16.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

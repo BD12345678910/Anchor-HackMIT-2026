@@ -1,9 +1,17 @@
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^[a-p]{32}$')][string]$ExtensionId,
-    [string]$BridgePath = (Join-Path $PSScriptRoot '..\artifacts\Anchor-win-x64\Anchor.NativeBridge.exe')
+    [string]$BridgePath = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($BridgePath)) {
+    $sibling = Join-Path $PSScriptRoot 'Anchor.NativeBridge.exe'
+    $BridgePath = if (Test-Path -LiteralPath $sibling -PathType Leaf) {
+        $sibling
+    } else {
+        Join-Path $PSScriptRoot '..\artifacts\Anchor-win-x64\Anchor.NativeBridge.exe'
+    }
+}
 $resolvedBridge = [IO.Path]::GetFullPath($BridgePath)
 if (-not (Test-Path -LiteralPath $resolvedBridge -PathType Leaf)) {
     throw "Anchor native bridge was not found: $resolvedBridge"

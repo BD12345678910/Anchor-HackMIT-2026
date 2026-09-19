@@ -20,6 +20,7 @@ public sealed record TaskStepItem(string Number, string Title, string Completion
 
 public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 {
+    private int _disposeStarted;
     private readonly AppServices _services;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _gazeTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
@@ -659,6 +660,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+        {
+            return;
+        }
+
         _timer.Stop();
         _gazeTimer.Stop();
         _timer.Tick -= Timer_Tick;

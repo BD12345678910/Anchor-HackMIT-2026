@@ -23,14 +23,21 @@ public sealed record InferenceWorkerOptions(
     TimeSpan StartupTimeout,
     TimeSpan RpcDeadline,
     int MaxRestarts,
-    string? SettingsDirectory = null)
+    string? SettingsDirectory = null,
+    bool StandaloneExecutable = false)
 {
-    public static InferenceWorkerOptions CreateDefault(string repositoryRoot) => new(
-        Path.Combine(repositoryRoot, ".venv", "Scripts", "python.exe"),
-        Path.Combine(repositoryRoot, "src", "Anchor.Worker"),
-        TimeSpan.FromSeconds(5),
-        TimeSpan.FromSeconds(2),
-        2);
+    public static InferenceWorkerOptions CreateDefault(string repositoryRoot)
+    {
+        var packaged = Path.Combine(AppContext.BaseDirectory, "Anchor.VisionWorker.exe");
+        return File.Exists(packaged)
+            ? new(packaged, AppContext.BaseDirectory, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(3), 2, StandaloneExecutable: true)
+            : new(
+                Path.Combine(repositoryRoot, ".venv", "Scripts", "python.exe"),
+                Path.Combine(repositoryRoot, "src", "Anchor.Worker"),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(2),
+                2);
+    }
 }
 
 public sealed class InferenceWorkerClient : IAsyncDisposable
@@ -465,14 +472,20 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        startInfo.ArgumentList.Add("-m");
-        startInfo.ArgumentList.Add("anchor_worker");
+        if (!_options.StandaloneExecutable)
+        {
+            startInfo.ArgumentList.Add("-m");
+            startInfo.ArgumentList.Add("anchor_worker");
+        }
         startInfo.ArgumentList.Add("--port");
         startInfo.ArgumentList.Add("0");
         startInfo.ArgumentList.Add("--token");
         startInfo.ArgumentList.Add(token);
         startInfo.Environment["PYTHONUNBUFFERED"] = "1";
-        startInfo.Environment["PYTHONPATH"] = _options.WorkerDirectory;
+        if (!_options.StandaloneExecutable)
+        {
+            startInfo.Environment["PYTHONPATH"] = _options.WorkerDirectory;
+        }
         if (!string.IsNullOrWhiteSpace(_options.SettingsDirectory))
         {
             startInfo.Environment["ANCHOR_SETTINGS_DIR"] = _options.SettingsDirectory;

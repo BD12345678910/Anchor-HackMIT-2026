@@ -11,7 +11,7 @@ def detect_capabilities(
         importer("cv2")
         importer("mediapipe")
     except (ImportError, ModuleNotFoundError) as error:
-        reason = f"optional vision dependencies unavailable: {type(error).__name__}"
+        reason = f"optional vision dependencies unavailable: {type(error).__name__}: {error}"
         return {
             "camera": {"available": False, "reason": reason},
             "visual_analysis": {"available": False, "reason": reason},

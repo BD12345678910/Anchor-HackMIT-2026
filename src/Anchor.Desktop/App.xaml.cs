@@ -57,5 +57,15 @@ public partial class App : Application
         Services = AppServices.Create();
         Window = new MainWindow();
         Window.Activate();
+        if (Environment.GetEnvironmentVariable("ANCHOR_VERIFY_RELEASE") == "1")
+        {
+            _ = CompleteVerificationLaunchAsync((MainWindow)Window);
+        }
+    }
+
+    private static async Task CompleteVerificationLaunchAsync(MainWindow window)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        await window.RequestExitAsync();
     }
 }
