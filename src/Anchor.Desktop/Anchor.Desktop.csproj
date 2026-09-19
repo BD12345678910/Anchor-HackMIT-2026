@@ -36,6 +36,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Anchor.Core\Anchor.Core.csproj" />
     <ProjectReference Include="..\Anchor.Infrastructure\Anchor.Infrastructure.csproj" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
   </ItemGroup>
 
   <ItemGroup>

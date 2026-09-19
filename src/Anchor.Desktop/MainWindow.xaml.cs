@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using Anchor.Infrastructure.Windows;
+using Anchor.Core.Services;
+using Anchor_Desktop.Services;
 using Anchor_Desktop.ViewModels;
 using Microsoft.UI.Xaml;
 
@@ -20,6 +22,9 @@ public sealed partial class MainWindow : Window
     private IntPtr _windowHandle;
     private IntPtr _originalProcedure;
     private bool _exitRequested;
+    private bool _cleanupComplete;
+    private readonly AppLifecycleModel _lifecycle = new();
+    private readonly TrayIconService _tray;
 
     public MainWindow()
     {
@@ -28,6 +33,13 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon("Assets/AppIcon.ico");
         RootFrame.Navigate(typeof(MainPage));
+
+        _tray = new TrayIconService(GetTraySummary);
+        _tray.ShowSettingsRequested += (_, _) => App.DispatcherQueue.TryEnqueue(ShowSettings);
+        _tray.ReportDistractedRequested += (_, _) => App.DispatcherQueue.TryEnqueue(ReportDistractedFromTray);
+        _tray.EmergencyReleaseRequested += (_, _) => App.DispatcherQueue.TryEnqueue(() =>
+            App.Services.Watchdog.Signal(SafetyReleaseReason.Escape));
+        _tray.ExitRequested += (_, _) => App.DispatcherQueue.TryEnqueue(async () => await ShutdownAsync());
 
         _windowProcedure = WindowMessage;
         _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -45,24 +57,31 @@ public sealed partial class MainWindow : Window
 
     private void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
-        if (!_exitRequested && App.Services.Orchestrator.IsRunning)
+        if (!_exitRequested)
         {
             args.Cancel = true;
+            _lifecycle.CloseSettings(App.Services.Orchestrator.IsRunning);
             AppWindow.Hide();
         }
     }
 
     private void Window_Closed(object sender, WindowEventArgs args)
     {
-        _exitRequested = true;
+        if (!_cleanupComplete)
+        {
+            _ = ShutdownAfterUnexpectedCloseAsync();
+        }
+    }
+
+    private void ReleaseWindowHooks()
+    {
         UnregisterHotKey(_windowHandle, ManualRecoveryHotkey);
         UnregisterHotKey(_windowHandle, ShowWindowHotkey);
         if (_originalProcedure != IntPtr.Zero)
         {
             SetWindowLongPtr(_windowHandle, GwlWndProc, _originalProcedure);
+            _originalProcedure = IntPtr.Zero;
         }
-
-        _ = App.Services.DisposeAsync();
     }
 
     private IntPtr WindowMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam)
@@ -90,11 +109,60 @@ public sealed partial class MainWindow : Window
             }
             else if (identifier == ShowWindowHotkey)
             {
-                App.DispatcherQueue.TryEnqueue(Activate);
+                App.DispatcherQueue.TryEnqueue(ShowSettings);
             }
         }
 
         return CallWindowProc(_originalProcedure, window, message, wParam, lParam);
+    }
+
+    private TrayTaskSummary GetTraySummary()
+    {
+        if (RootFrame.Content is not MainPage page)
+        {
+            return new("Anchor", "Open Settings", false);
+        }
+        return new(page.ViewModel.TaskTitle, page.ViewModel.CurrentSubtask, page.ViewModel.IsRunning);
+    }
+
+    private void ShowSettings()
+    {
+        _lifecycle.ShowSettings();
+        AppWindow.Show();
+        Activate();
+    }
+
+    private async void ReportDistractedFromTray()
+    {
+        if (RootFrame.Content is MainPage page)
+        {
+            await page.ViewModel.ReportDistractedCommand.ExecuteAsync(null);
+        }
+    }
+
+    private async Task ShutdownAsync()
+    {
+        if (_exitRequested) return;
+        _exitRequested = true;
+        _lifecycle.RequestExit();
+        _tray.Dispose();
+        if (RootFrame.Content is MainPage page)
+        {
+            await page.ViewModel.DisposeAsync();
+        }
+        await App.Services.DisposeAsync();
+        ReleaseWindowHooks();
+        _cleanupComplete = true;
+        Close();
+    }
+
+    private async Task ShutdownAfterUnexpectedCloseAsync()
+    {
+        _exitRequested = true;
+        _tray.Dispose();
+        await App.Services.DisposeAsync();
+        ReleaseWindowHooks();
+        _cleanupComplete = true;
     }
 
     private delegate IntPtr WndProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
