@@ -21,6 +21,26 @@ public sealed record ToolkitState(
     bool BrowserAnimationSuppression = false)
 {
     public static ToolkitState Off { get; } = new(false, false, false, false, BrowserImageBlur: false, BrowserFutureTextMask: false);
+
+    public static ToolkitState FromPreferences(
+        bool sessionActive,
+        bool gazeSpotlight,
+        bool peripheralDim,
+        bool windowFirewall,
+        bool pointerGuard,
+        bool secureWindow,
+        bool browserImageBlur,
+        bool browserFutureTextMask,
+        bool browserAnimationSuppression) =>
+        new(
+            sessionActive && gazeSpotlight,
+            sessionActive && peripheralDim,
+            sessionActive && windowFirewall,
+            sessionActive && pointerGuard,
+            secureWindow,
+            browserImageBlur,
+            browserFutureTextMask,
+            browserAnimationSuppression);
 }
 
 public sealed record ToolkitApplyResult(

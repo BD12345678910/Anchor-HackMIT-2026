@@ -259,9 +259,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 taskState.Progress.CurrentStep?.Title,
                 "Session starting window",
                 evidenceTimestamp: DateTimeOffset.UtcNow));
+            IsRunning = true;
+            await ApplyToolkitStateAsync();
             _services.Overlays.ShowBeacon();
             _services.Watchdog.Arm(DateTimeOffset.UtcNow);
-            IsRunning = true;
             CapabilityStatus = _sessionGazeActive
                 ? $"{_services.Orchestrator.CapabilityStatus} · gaze live"
                 : $"{_services.Orchestrator.CapabilityStatus} · no camera";
@@ -357,6 +358,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _services.Watchdog.Signal(Anchor.Infrastructure.Windows.SafetyReleaseReason.Shutdown);
             AddTimeline("Session complete", $"{FocusedDuration} focused · {InterruptionCount} interruptions");
             IsRunning = false;
+            _lastSecureWindow = false;
+            await ApplyToolkitStateAsync();
             AttentionState = "Ready";
             CapabilityStatus = "Stopped";
             Confidence = "—";
@@ -988,15 +991,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
-            var results = await _services.Overlays.SetToolkitStateAsync(new ToolkitState(
-                GazeSpotlightEnabled,
-                VisualFilterEnabled,
-                WindowFirewallEnabled,
-                PointerGuardEnabled,
-                _lastSecureWindow,
-                BlurImagesEnabled,
-                HideFutureTextEnabled,
-                SuppressAnimationsEnabled));
+            var results = await _services.Overlays.SetToolkitStateAsync(ToolkitState.FromPreferences(
+                sessionActive: IsRunning,
+                gazeSpotlight: GazeSpotlightEnabled,
+                peripheralDim: VisualFilterEnabled,
+                windowFirewall: WindowFirewallEnabled,
+                pointerGuard: PointerGuardEnabled,
+                secureWindow: _lastSecureWindow,
+                browserImageBlur: BlurImagesEnabled,
+                browserFutureTextMask: HideFutureTextEnabled,
+                browserAnimationSuppression: SuppressAnimationsEnabled));
             ToolkitStatus = string.Join(" · ", results
                 .Where(static result => result.Status != "Off")
                 .Select(static result => $"{result.Feature}: {result.Status}"));

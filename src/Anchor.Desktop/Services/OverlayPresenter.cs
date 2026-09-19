@@ -80,8 +80,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
             if (state.PeripheralDim)
             {
-                ShowFilter();
-                results.Add(new(ToolkitFeature.PeripheralDim, "Active", true));
+                results.Add(new(ToolkitFeature.PeripheralDim, "Armed for distraction", _filter is not null));
             }
             else
             {
@@ -91,11 +90,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
             if (state.WindowFirewall)
             {
-                var visible = ShowFirewall();
-                results.Add(new(
-                    ToolkitFeature.WindowFirewall,
-                    visible ? "Active" : "Suppressed for Anchor or system window",
-                    visible));
+                results.Add(new(ToolkitFeature.WindowFirewall, "Armed for low-relevance windows", _firewall is not null));
             }
             else
             {
