@@ -123,13 +123,16 @@ public sealed class AttentionStateMachine
             reasons.Add("pointer_wandering");
         }
 
-        if (window.IsWorkerAvailable)
+        if (window.GazeAvailable && window.GazeAwaySustained)
         {
-            evidence += (1 - window.GazePresence) * 0.10;
-            if (window.GazePresence < 0.35)
-            {
-                reasons.Add("gaze_absent");
-            }
+            evidence += (1 - window.GazePresence) * 0.18;
+            reasons.Add("gaze_away_sustained");
+        }
+
+        if (window.NoProgressSustained)
+        {
+            evidence += 0.12;
+            reasons.Add("no_progress_sustained");
         }
 
         if (window.KeyCount > 0 && window.AppRelevance >= 0.5)

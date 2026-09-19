@@ -24,6 +24,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _tickInFlight;
     private bool _gazeTickInFlight;
     private int _calibrationIndex;
+    private AttentionFusion _attentionFusion = new();
+    private bool _sessionGazeActive;
     private TaskSessionPlanner? _taskPlanner;
     private string? _plannedGoal;
 
@@ -77,6 +79,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial ImageSource? GazePreviewSource { get; set; }
     [ObservableProperty] public partial string CalibrationTarget { get; set; } = "Top left";
     [ObservableProperty] public partial string CalibrationProgressLabel { get; set; } = "0 of 9";
+    [ObservableProperty] public partial bool TreatCurrentWindowAsRelevant { get; set; }
 
     partial void OnVisualFilterEnabledChanged(bool value) => _services.Overlays.EnableVisualFilter = value;
     partial void OnPointerGuardEnabledChanged(bool value) => _services.Overlays.EnablePointerGuard = value;
@@ -206,6 +209,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var session = await _services.Orchestrator.StartAsync(TaskTitle);
+            _attentionFusion = new AttentionFusion();
+            var gazeStatus = await _services.Inference.StartGazeAsync();
+            _sessionGazeActive = gazeStatus.Running;
             var taskState = _taskPlanner.Current;
             _services.Overlays.UpdateGoal(
                 session.Title,
@@ -219,7 +225,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _services.Overlays.ShowBeacon();
             _services.Watchdog.Arm(DateTimeOffset.UtcNow);
             IsRunning = true;
-            CapabilityStatus = _services.Orchestrator.CapabilityStatus;
+            CapabilityStatus = _sessionGazeActive
+                ? $"{_services.Orchestrator.CapabilityStatus} · gaze live"
+                : $"{_services.Orchestrator.CapabilityStatus} · no camera";
             AttentionState = "Observing";
             ReasonSummary = "Calibrating from app, idle, pointer, keyboard, and scrolling patterns.";
             StatusMessage = "Session active. Anchor intervenes only when evidence is strong.";
@@ -287,6 +295,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await _services.Orchestrator.StopAsync();
+            _sessionGazeActive = false;
             _services.Watchdog.Signal(Anchor.Infrastructure.Windows.SafetyReleaseReason.Shutdown);
             AddTimeline("Session complete", $"{FocusedDuration} focused · {InterruptionCount} interruptions");
             IsRunning = false;
@@ -519,8 +528,41 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _services.Watchdog.Heartbeat(now);
             _services.Watchdog.CheckExpired(now);
             _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(TaskTitle));
-            var window = _services.Sensors.Sample(TaskTitle, _services.Inference.IsAvailable, now);
-            var prediction = await _services.Orchestrator.ProcessAsync(window);
+            var raw = _services.Sensors.Sample(
+                $"{TaskTitle} {CurrentSubtask}",
+                _services.Inference.IsAvailable,
+                now);
+            var gaze = _sessionGazeActive
+                ? await _services.Inference.ReadGazeAsync()
+                : null;
+            var context = _services.Sensors.CreateTaskContext(
+                TaskTitle,
+                CurrentSubtask,
+                TreatCurrentWindowAsRelevant && raw.AppRelevance > 0
+                    ? ["Current foreground window"]
+                    : []);
+            var relevance = _taskPlanner is null
+                ? null
+                : await _taskPlanner.JudgeRelevanceAsync(context);
+            var progressObserved = raw.KeyCount > 0
+                || raw.MouseDistance >= 4
+                || raw.ScrollReversalCount > 0;
+            var fused = _attentionFusion.Apply(AttentionEvidence.At(
+                now,
+                raw.KeyCount,
+                raw.MouseDistance,
+                raw.IdleSeconds,
+                raw.AppRelevance,
+                relevance,
+                TreatCurrentWindowAsRelevant,
+                gaze,
+                _services.Sensors.IsGazeOnForegroundWindow(gaze),
+                raw.AppSwitchCount,
+                raw.ScrollReversalCount,
+                progressObserved,
+                raw.IsSecureWindow,
+                _services.Inference.IsAvailable));
+            var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
             ApplyPrediction(prediction);
         }
         catch (Exception error)
@@ -569,7 +611,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         ReasonSummary = prediction.ReasonCodes.Count == 0
             ? "No distraction signals"
             : string.Join(" · ", prediction.ReasonCodes.Select(static item => item.Replace('_', ' ')));
-        CapabilityStatus = _services.Orchestrator.CapabilityStatus;
+        CapabilityStatus = _sessionGazeActive
+            ? $"{_services.Orchestrator.CapabilityStatus} · gaze live"
+            : $"{_services.Orchestrator.CapabilityStatus} · no camera";
 
         if (_services.Orchestrator.Progress is { } progress)
         {

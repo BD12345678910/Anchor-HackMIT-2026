@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Anchor.Core.Models;
 using Anchor.Core.Services;
@@ -106,6 +107,44 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             IsSensitiveField: secure);
     }
 
+    public TaskContext CreateTaskContext(
+        string goal,
+        string currentSubtask,
+        IReadOnlyList<string>? userRelevantTargets = null)
+    {
+        var foreground = _foreground?.LastEvent;
+        var process = GetFeature(foreground, "process");
+        var title = GetFeature(foreground, "title");
+        return new TaskContext(
+            goal,
+            currentSubtask,
+            string.IsNullOrWhiteSpace(process) ? "Desktop" : process,
+            string.IsNullOrWhiteSpace(title) ? null : title,
+            null,
+            userRelevantTargets ?? []);
+    }
+
+    public bool IsGazeOnForegroundWindow(GazeSample? gaze)
+    {
+        if (gaze is not { Available: true } || gaze.X is null || gaze.Y is null)
+        {
+            return false;
+        }
+        var window = GetForegroundWindow();
+        if (window == IntPtr.Zero || !GetWindowRect(window, out var rectangle))
+        {
+            return true;
+        }
+        var width = Math.Max(1, GetSystemMetrics(0));
+        var height = Math.Max(1, GetSystemMetrics(1));
+        var x = gaze.X.Value * width;
+        var y = gaze.Y.Value * height;
+        return x >= rectangle.Left
+            && x <= rectangle.Right
+            && y >= rectangle.Top
+            && y <= rectangle.Bottom;
+    }
+
     public void Dispose() => StopAsync().GetAwaiter().GetResult();
 
     private static string GetFeature(DerivedEvent? item, string key) =>
@@ -120,4 +159,23 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         double.TryParse(GetFeature(item, key), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : 0;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr window, out Rect rectangle);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 }

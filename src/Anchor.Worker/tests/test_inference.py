@@ -61,3 +61,31 @@ def test_repeated_scroll_loop_on_relevant_content_reports_stuck_phrase():
 
     assert "stuck_phrase" not in first.reason_codes
     assert "stuck_phrase" in result.reason_codes
+
+
+def test_missing_gaze_is_unavailable_not_neutral_center_evidence():
+    features = normalize_features({})
+    result = AttentionInference(alpha=1).predict(features)
+
+    assert features.gaze_available is False
+    assert features.gaze_presence == 0.0
+    assert "gaze_absent" not in result.reason_codes
+
+
+def test_gaze_away_requires_sustained_available_windows():
+    model = AttentionInference(alpha=1)
+    features = normalize_features(
+        {
+            "app_relevance": 0.8,
+            "gaze_available": True,
+            "gaze_presence": 0.0,
+        }
+    )
+
+    first = model.predict(features)
+    second = model.predict(features)
+    sustained = model.predict(features)
+
+    assert "gaze_away_sustained" not in first.reason_codes
+    assert "gaze_away_sustained" not in second.reason_codes
+    assert "gaze_away_sustained" in sustained.reason_codes

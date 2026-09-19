@@ -11,20 +11,28 @@ public sealed record SensorWindow(
     int ScrollReversalCount,
     bool IsSecureWindow,
     bool IsWorkerAvailable,
-    bool IsManualReport)
+    bool IsManualReport,
+    bool GazeAvailable,
+    bool GazeAwaySustained,
+    bool ProgressObserved,
+    bool NoProgressSustained)
 {
     public static SensorWindow Create(
         int keyCount,
         double mouseDistance,
         double idleSeconds,
         double appRelevance = 0.5,
-        double gazePresence = 0.5,
+        double gazePresence = 0,
         int appSwitchCount = 0,
         int scrollReversalCount = 0,
         bool isSecureWindow = false,
         bool isWorkerAvailable = false,
         bool isManualReport = false,
-        DateTimeOffset? timestamp = null)
+        DateTimeOffset? timestamp = null,
+        bool gazeAvailable = false,
+        bool gazeAwaySustained = false,
+        bool progressObserved = true,
+        bool noProgressSustained = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keyCount);
         ArgumentOutOfRangeException.ThrowIfNegative(mouseDistance);
@@ -43,7 +51,11 @@ public sealed record SensorWindow(
             scrollReversalCount,
             isSecureWindow,
             isWorkerAvailable,
-            isManualReport);
+            isManualReport,
+            gazeAvailable,
+            gazeAwaySustained,
+            progressObserved,
+            noProgressSustained);
     }
 
     private static double ClampScore(double value) =>

@@ -4,50 +4,72 @@ using Anchor.Infrastructure.Worker;
 
 namespace Anchor_Desktop.Services;
 
-public sealed class InferenceEngineAdapter(InferenceWorkerClient client) : IInferenceEngine, IAsyncDisposable
+public sealed class InferenceEngineAdapter : IInferenceEngine, IAsyncDisposable
 {
-    public bool IsAvailable => client.Mode == WorkerMode.Available;
+    private readonly InferenceWorkerClient _client;
+    private AttentionStateMachine _local = AttentionStateMachine.CreateDefault();
+
+    public InferenceEngineAdapter(InferenceWorkerClient client)
+    {
+        _client = client;
+    }
+
+    public bool IsAvailable => _client.Mode == WorkerMode.Available;
 
     public Task<bool> StartAsync(CancellationToken cancellationToken = default) =>
-        client.StartAsync(cancellationToken);
+        _client.StartAsync(cancellationToken);
 
-    public Task<AttentionPrediction> PredictAsync(
+    public async Task<AttentionPrediction> PredictAsync(
         SensorWindow window,
-        CancellationToken cancellationToken = default) =>
-        client.PredictAsync(window, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        var local = _local.Update(window);
+        var remote = await _client.PredictAsync(window, cancellationToken);
+        return local with
+        {
+            Confidence = Math.Max(local.Confidence, remote.Confidence),
+            DistractionProbability = Math.Max(
+                local.DistractionProbability,
+                remote.DistractionProbability),
+            ReasonCodes = local.ReasonCodes.Concat(remote.ReasonCodes).Distinct().ToArray()
+        };
+    }
 
     public Task<IReadOnlyList<CameraDevice>> ListCamerasAsync(
         CancellationToken cancellationToken = default) =>
-        client.ListCamerasAsync(cancellationToken);
+        _client.ListCamerasAsync(cancellationToken);
 
     public Task<GazeConfigurationResult> ConfigureGazeAsync(
         GazeConfiguration configuration,
         string displaySignature,
         CancellationToken cancellationToken = default) =>
-        client.ConfigureGazeAsync(configuration, displaySignature, cancellationToken);
+        _client.ConfigureGazeAsync(configuration, displaySignature, cancellationToken);
 
     public Task<GazeStatus> StartGazeAsync(CancellationToken cancellationToken = default) =>
-        client.StartGazeAsync(cancellationToken);
+        _client.StartGazeAsync(cancellationToken);
 
     public Task<GazeSample> ReadGazeAsync(CancellationToken cancellationToken = default) =>
-        client.ReadGazeAsync(cancellationToken);
+        _client.ReadGazeAsync(cancellationToken);
 
     public Task<CalibrationProgress> AddCalibrationSampleAsync(
         double targetX,
         double targetY,
         CancellationToken cancellationToken = default) =>
-        client.AddCalibrationSampleAsync(targetX, targetY, cancellationToken);
+        _client.AddCalibrationSampleAsync(targetX, targetY, cancellationToken);
 
     public Task<CalibrationResult> FinishCalibrationAsync(
         string displaySignature,
         CancellationToken cancellationToken = default) =>
-        client.FinishCalibrationAsync(displaySignature, cancellationToken);
+        _client.FinishCalibrationAsync(displaySignature, cancellationToken);
 
     public Task<GazeStatus> StopGazeAsync(CancellationToken cancellationToken = default) =>
-        client.StopGazeAsync(cancellationToken);
+        _client.StopGazeAsync(cancellationToken);
 
-    public Task StopAsync(CancellationToken cancellationToken = default) =>
-        client.StopAsync(cancellationToken);
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        await _client.StopAsync(cancellationToken);
+        _local = AttentionStateMachine.CreateDefault();
+    }
 
-    public ValueTask DisposeAsync() => client.DisposeAsync();
+    public ValueTask DisposeAsync() => _client.DisposeAsync();
 }

@@ -50,6 +50,25 @@ public sealed class TaskSessionPlannerTests
         Assert.Equal("deepseek_not_configured", result.ErrorCode);
     }
 
+    [Fact]
+    public async Task Relevance_judgment_uses_the_same_intelligence_and_active_context()
+    {
+        var intelligence = new FixedIntelligence(ThreeQuestionResult());
+        var planner = new TaskSessionPlanner(intelligence);
+        var context = new TaskContext(
+            "Do 3 USACO questions",
+            "Solve problem 1",
+            "chrome",
+            "USACO Guide",
+            "usaco.guide",
+            []);
+
+        var result = await planner.JudgeRelevanceAsync(context);
+
+        Assert.Equal(0.9, result.Score);
+        Assert.Same(context, intelligence.LastContext);
+    }
+
     private static TaskPlanningResult ThreeQuestionResult() =>
         new(
             new TaskPlan("Do 3 USACO questions", [
@@ -63,6 +82,7 @@ public sealed class TaskSessionPlannerTests
 
     private sealed class FixedIntelligence(TaskPlanningResult result) : ITaskIntelligence
     {
+        public TaskContext? LastContext { get; private set; }
         public TaskIntelligenceAvailability Availability { get; } = new(true, true, "test");
 
         public Task<TaskPlanningResult> PlanTaskAsync(string goal, CancellationToken cancellationToken = default) =>
@@ -70,8 +90,16 @@ public sealed class TaskSessionPlannerTests
 
         public Task<RelevanceJudgment> JudgeRelevanceAsync(
             TaskContext context,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            LastContext = context;
+            return Task.FromResult(new RelevanceJudgment(
+                0.9,
+                RelevanceClass.Relevant,
+                "test",
+                false,
+                DateTimeOffset.MaxValue));
+        }
 
         public Task<TaskStep> BreakDownStepAsync(
             TaskContext context,

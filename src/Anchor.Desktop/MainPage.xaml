@@ -137,6 +137,9 @@
                             <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="Stored encrypted for this Windows account"
                                          PasswordChanged="DeepSeekKeyBox_PasswordChanged" />
                             <Button Content="Save DeepSeek settings" HorizontalAlignment="Left" Command="{x:Bind ViewModel.SaveDeepSeekSettingsCommand}" />
+                            <ToggleSwitch Header="Treat the current window as task-relevant"
+                                          OffContent="Use model judgment" OnContent="User override"
+                                          IsOn="{x:Bind ViewModel.TreatCurrentWindowAsRelevant, Mode=TwoWay}" />
                             <TextBlock Text="{x:Bind ViewModel.DeepSeekStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </Border>

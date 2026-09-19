@@ -29,7 +29,7 @@ class NormalizedFeatures:
     mouse_distance: float = 0.0
     idle_seconds: float = 0.0
     app_relevance: float = 0.5
-    gaze_presence: float = 0.5
+    gaze_presence: float = 0.0
     app_switch_count: int = 0
     scroll_reversal_count: int = 0
     gaze_available: bool = False
@@ -49,7 +49,7 @@ def normalize_features(values: Mapping[str, Any]) -> NormalizedFeatures:
         mouse_distance=_finite_non_negative(values.get("mouse_distance")),
         idle_seconds=_finite_non_negative(values.get("idle_seconds")),
         app_relevance=_score(values.get("app_relevance")),
-        gaze_presence=_score(values.get("gaze_presence")),
+        gaze_presence=_score(values.get("gaze_presence"), default=0.0),
         app_switch_count=_count(values.get("app_switch_count")),
         scroll_reversal_count=_count(values.get("scroll_reversal_count")),
         gaze_available=bool(values.get("gaze_available", False)),

@@ -70,16 +70,19 @@ public static class ReplayScenarioRunner
             {
                 prediction = await orchestrator.ProcessAsync(
                     SensorWindow.Create(
-                        step.KeyCount,
-                        step.MouseDistance,
-                        step.IdleSeconds,
-                        step.AppRelevance,
-                        step.GazePresence,
-                        step.AppSwitchCount,
-                        step.ScrollReversalCount,
-                        step.IsSecureWindow,
-                        step.WorkerAvailable,
-                        timestamp: now),
+                        keyCount: step.KeyCount,
+                        mouseDistance: step.MouseDistance,
+                        idleSeconds: step.IdleSeconds,
+                        appRelevance: step.AppRelevance,
+                        gazePresence: step.GazePresence ?? 0,
+                        appSwitchCount: step.AppSwitchCount,
+                        scrollReversalCount: step.ScrollReversalCount,
+                        isSecureWindow: step.IsSecureWindow,
+                        isWorkerAvailable: step.WorkerAvailable,
+                        timestamp: now,
+                        gazeAvailable: step.GazeAvailable ?? step.GazePresence.HasValue,
+                        gazeAwaySustained: (step.GazeAvailable ?? step.GazePresence.HasValue)
+                            && step.GazePresence < 0.35),
                     cancellationToken);
             }
 
@@ -155,7 +158,8 @@ public static class ReplayScenarioRunner
         public double MouseDistance { get; init; }
         public double IdleSeconds { get; init; }
         public double AppRelevance { get; init; } = 0.5;
-        public double GazePresence { get; init; } = 0.5;
+        public double? GazePresence { get; init; }
+        public bool? GazeAvailable { get; init; }
         public int AppSwitchCount { get; init; }
         public int ScrollReversalCount { get; init; }
         public bool IsSecureWindow { get; init; }

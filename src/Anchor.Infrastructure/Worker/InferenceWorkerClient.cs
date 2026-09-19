@@ -127,7 +127,7 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
                     GazePresence = window.GazePresence,
                     AppSwitchCount = checked((uint)window.AppSwitchCount),
                     ScrollReversalCount = checked((uint)window.ScrollReversalCount),
-                    GazeAvailable = window.IsWorkerAvailable,
+                    GazeAvailable = window.GazeAvailable,
                     ManualReport = window.IsManualReport
                 }
             };

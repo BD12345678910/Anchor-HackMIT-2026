@@ -22,6 +22,7 @@ class AttentionInference:
         self._alpha = alpha
         self._smoothed: float | None = None
         self._stuck_windows = 0
+        self._gaze_away_windows = 0
 
     def predict(self, features: NormalizedFeatures) -> InferenceResult:
         started = time.perf_counter()
@@ -58,10 +59,11 @@ class AttentionInference:
         if features.mouse_distance >= 250:
             reasons.append("pointer_wandering")
 
-        if features.gaze_available:
+        gaze_away = features.gaze_available and features.gaze_presence < 0.35
+        self._gaze_away_windows = self._gaze_away_windows + 1 if gaze_away else 0
+        if features.gaze_available and self._gaze_away_windows >= 3:
             linear += (1 - features.gaze_presence) * 0.8
-            if features.gaze_presence < 0.35:
-                reasons.append("gaze_absent")
+            reasons.append("gaze_away_sustained")
 
         if features.key_count and features.app_relevance >= 0.5:
             linear -= min(features.key_count, 20) * 0.035

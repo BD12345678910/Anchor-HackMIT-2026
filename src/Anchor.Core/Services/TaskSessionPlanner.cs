@@ -49,6 +49,16 @@ public sealed class TaskSessionPlanner
         return Current;
     }
 
+    public Task<RelevanceJudgment> JudgeRelevanceAsync(
+        TaskContext context,
+        CancellationToken cancellationToken = default) =>
+        _intelligence.JudgeRelevanceAsync(context, cancellationToken);
+
+    public Task<TaskStep> BreakDownCurrentStepAsync(
+        TaskContext context,
+        CancellationToken cancellationToken = default) =>
+        _intelligence.BreakDownStepAsync(context, cancellationToken);
+
     public TaskSessionPlanState ConfirmSuggestedCompletion(DateTimeOffset completedAt)
     {
         EnsurePlanned();
