@@ -34,6 +34,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _lastSecureWindow;
     private TaskSessionPlanner? _taskPlanner;
     private string? _plannedGoal;
+    private string? _lastEvidenceTitle;
+    private readonly HashSet<string> _dismissedSuggestions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userRelevantTargets = new(StringComparer.OrdinalIgnoreCase);
 
     public MainPageViewModel(AppServices services)
@@ -71,6 +73,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string CurrentSubtask { get; set; } = "Plan the goal to choose a first step.";
     [ObservableProperty] public partial string TaskProgressLabel { get; set; } = "0 of 0";
     [ObservableProperty] public partial string PlanSource { get; set; } = "Not planned";
+    [ObservableProperty] public partial string ProgressNote { get; set; } = string.Empty;
+    [ObservableProperty] public partial string? PendingSuggestion { get; set; }
+    [ObservableProperty] public partial bool HasPendingSuggestion { get; set; }
+    [ObservableProperty] public partial bool IsPlanComplete { get; set; }
     [ObservableProperty] public partial bool DeepSeekEnabled { get; set; }
     [ObservableProperty] public partial string DeepSeekApiKey { get; set; } = string.Empty;
     [ObservableProperty] public partial string DeepSeekStatus { get; set; } = "Not configured";
@@ -78,6 +84,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool GazeSpotlightEnabled { get; set; }
     [ObservableProperty] public partial bool WindowFirewallEnabled { get; set; }
     [ObservableProperty] public partial string ToolkitStatus { get; set; } = "Desktop tools ready";
+    [ObservableProperty] public partial string BrowserStatus { get; set; } = "Browser extension: not connected";
+    [ObservableProperty] public partial bool IsBrowserConnected { get; set; }
     [ObservableProperty] public partial CameraDevice? SelectedCamera { get; set; }
     [ObservableProperty] public partial bool GazeMirror { get; set; } = true;
     [ObservableProperty] public partial double GazeRotationDegrees { get; set; }
@@ -196,10 +204,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _taskPlanner = await _services.CreateTaskPlannerAsync();
             var state = await _taskPlanner.PlanAsync(TaskTitle);
             _plannedGoal = TaskTitle.Trim();
+            _lastEvidenceTitle = null;
+            _dismissedSuggestions.Clear();
             ApplyTaskPlanState(state);
             IsPlanReady = true;
+            _services.Overlays.UpdateGoal(TaskTitle, state.Progress.CurrentStep?.Title, state.ProgressLabel);
             StatusMessage = state.IsFallback
-                ? "DeepSeek is unavailable. Review the labeled local fallback, then start if it is acceptable."
+                ? "Planned locally (DeepSeek is off). Review the steps, then start the focus session."
                 : "Plan ready. Review the steps, then start the focus session.";
         }
         catch (Exception error)
@@ -283,27 +294,126 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     }
 
     [RelayCommand]
-    private void MarkCurrentStepComplete()
+    private void MarkCurrentStepComplete() => CompleteCurrentStep(CompletionSource.User, null);
+
+    [RelayCommand]
+    private void LogProgress()
     {
-        if (!IsRunning || _taskPlanner?.Current?.Progress.CurrentStep is null)
+        var note = ProgressNote.Trim();
+        if (note.Length == 0)
         {
-            StatusMessage = "Start a planned session before completing a step.";
+            StatusMessage = "Type what you just did or opened, for example \"USACO 2021 Dec Bronze problem 1\".";
+            return;
+        }
+
+        if (_taskPlanner?.Current?.Progress.CurrentStep is not { } current)
+        {
+            StatusMessage = "Plan the goal first so progress can be matched to a step.";
+            return;
+        }
+
+        ProgressNote = string.Empty;
+        var match = TaskEvidenceMatcher.Evaluate(current, TaskTitle, note);
+        if (match.SuggestsCompletion)
+        {
+            CompleteCurrentStep(CompletionSource.User, note);
+            return;
+        }
+
+        AddTimeline("Progress note", note);
+        StatusMessage = $"Noted. \"{note}\" did not clearly match \"{current.Title}\" — use Mark step done if it is finished.";
+    }
+
+    [RelayCommand]
+    private void ConfirmSuggestion()
+    {
+        if (_taskPlanner?.Current?.Progress.PendingSuggestion is not { } evidence)
+        {
+            ClearSuggestion();
+            return;
+        }
+
+        CompleteCurrentStep(CompletionSource.LlmSuggestionConfirmed, evidence);
+    }
+
+    [RelayCommand]
+    private void DismissSuggestion()
+    {
+        if (_taskPlanner?.Current?.Progress.PendingSuggestion is { } evidence)
+        {
+            _dismissedSuggestions.Add(evidence);
+        }
+        ClearSuggestion();
+        StatusMessage = "Suggestion dismissed. Anchor will not ask about that window again for this step.";
+    }
+
+    private void CompleteCurrentStep(CompletionSource source, string? evidence)
+    {
+        if (_taskPlanner?.Current?.Progress.CurrentStep is null)
+        {
+            StatusMessage = IsPlanReady
+                ? "All planned steps are already complete."
+                : "Plan the goal before completing a step.";
             return;
         }
 
         var completed = _taskPlanner.Current.Progress.CurrentStep.Title;
-        var state = _taskPlanner.MarkCurrentComplete(CompletionSource.User, DateTimeOffset.UtcNow);
-        _services.Recording.RecordSubtaskCompleted(completed);
+        var state = source == CompletionSource.LlmSuggestionConfirmed && _taskPlanner.Current.Progress.PendingSuggestion is not null
+            ? _taskPlanner.ConfirmSuggestedCompletion(DateTimeOffset.UtcNow)
+            : _taskPlanner.MarkCurrentComplete(source, DateTimeOffset.UtcNow);
+        if (IsRunning)
+        {
+            _services.Recording.RecordSubtaskCompleted(completed);
+            _services.Orchestrator.UpdateTaskContext(
+                state.Progress.CurrentStep?.Title,
+                state.Progress.CurrentStep?.CompletionCriterion);
+        }
         ApplyTaskPlanState(state);
         _services.Overlays.UpdateGoal(TaskTitle, state.Progress.CurrentStep?.Title, state.ProgressLabel);
-        _services.Orchestrator.UpdateTaskContext(
-            state.Progress.CurrentStep?.Title,
-            state.Progress.CurrentStep?.CompletionCriterion);
-        _services.Overlays.ShowBeacon();
-        AddTimeline("Step complete", completed);
+        if (IsRunning)
+        {
+            _services.Overlays.ShowBeacon(pulse: true);
+        }
+        _dismissedSuggestions.Clear();
+        AddTimeline("Step complete", evidence is null ? completed : $"{completed} · {evidence}");
         StatusMessage = state.Progress.CurrentStep is null
-            ? "All planned steps are complete."
-            : $"Next step: {state.Progress.CurrentStep.Title}";
+            ? "All planned steps are complete. Nice work."
+            : $"Step done: {completed}. Next: {state.Progress.CurrentStep.Title}";
+    }
+
+    private void ClearSuggestion()
+    {
+        PendingSuggestion = null;
+        HasPendingSuggestion = false;
+    }
+
+    private void ConsiderEvidence(string? windowTitle, string? processName)
+    {
+        if (_taskPlanner?.Current?.Progress.CurrentStep is not { } current
+            || string.IsNullOrWhiteSpace(windowTitle)
+            || string.Equals(windowTitle, _lastEvidenceTitle, StringComparison.Ordinal)
+            || string.Equals(processName, "Anchor", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _lastEvidenceTitle = windowTitle;
+        if (_taskPlanner.Current.Progress.PendingSuggestion is not null || _dismissedSuggestions.Contains(windowTitle))
+        {
+            return;
+        }
+
+        var match = TaskEvidenceMatcher.Evaluate(current, TaskTitle, windowTitle);
+        if (!match.SuggestsCompletion)
+        {
+            return;
+        }
+
+        var state = _taskPlanner.SuggestCompletion(windowTitle);
+        PendingSuggestion = $"\"{windowTitle}\" looks like progress on \"{current.Title}\". Mark it done?";
+        HasPendingSuggestion = true;
+        AddTimeline("Progress spotted", $"{windowTitle} · matched {string.Join(", ", match.MatchedTokens)}");
+        ApplyTaskPlanState(state);
     }
 
     [RelayCommand]
@@ -424,33 +534,72 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private async Task RefreshCamerasAsync()
     {
         IsBusy = true;
-        GazeStatusMessage = "Checking available cameras…";
+        GazeStatusMessage = "Asking Windows which cameras are attached…";
+        IReadOnlyList<CameraDevice> windowsDevices = [];
         try
         {
-            if (!await _services.Inference.StartAsync())
-            {
-                GazeStatusMessage = "The local vision worker could not start.";
-                return;
-            }
-            var devices = await _services.Inference.ListCamerasAsync();
-            CameraDevices.Clear();
-            foreach (var device in devices)
-            {
-                CameraDevices.Add(device);
-            }
-            SelectedCamera = CameraDevices.FirstOrDefault();
-            GazeStatusMessage = devices.Count == 0
-                ? "No openable camera was found. Camera access may be disabled in Windows Settings."
-                : $"Found {devices.Count} camera{(devices.Count == 1 ? string.Empty : "s")}.";
+            windowsDevices = await WindowsCameraEnumerator.ListAsync();
         }
         catch (Exception error)
         {
+            AddTimeline("Camera enumeration", error.Message);
+        }
+
+        try
+        {
+            GazeStatusMessage = windowsDevices.Count == 0
+                ? "Windows reports no camera. Starting the vision worker to double-check…"
+                : $"Windows sees {Describe(windowsDevices)}. Starting the vision worker (first start can take ~30 s)…";
+            if (!await _services.Inference.StartAsync())
+            {
+                ReplaceCameras(windowsDevices);
+                var reason = _services.Inference.LastError ?? "unknown error";
+                GazeStatusMessage = windowsDevices.Count == 0
+                    ? $"No camera is attached and the vision worker could not start ({reason})."
+                    : $"Windows sees {Describe(windowsDevices)}, but the vision worker could not start: {reason}. "
+                      + "Run scripts\\build.ps1 to package Anchor.VisionWorker.exe, or create .venv from src\\Anchor.Worker.";
+                return;
+            }
+
+            var openable = await _services.Inference.ListCamerasAsync();
+            var merged = WindowsCameraEnumerator.Merge(windowsDevices, openable);
+            ReplaceCameras(merged);
+            GazeStatusMessage = openable.Count switch
+            {
+                0 when windowsDevices.Count == 0 =>
+                    "No camera found. Plug in a webcam, then refresh.",
+                0 =>
+                    $"Windows sees {Describe(windowsDevices)}, but it could not be opened. Close other apps using the camera "
+                    + "(Teams, Zoom, browser tabs) and allow desktop apps under Settings > Privacy & security > Camera.",
+                _ => $"Ready · {Describe(merged)} can be opened. Choose one and press Test gaze."
+            };
+        }
+        catch (Exception error)
+        {
+            ReplaceCameras(windowsDevices);
             GazeStatusMessage = $"Camera check failed: {error.Message}";
         }
         finally
         {
             IsBusy = false;
         }
+
+        static string Describe(IReadOnlyList<CameraDevice> devices) =>
+            devices.Count == 1
+                ? $"1 camera ({devices[0].Name})"
+                : $"{devices.Count} cameras ({string.Join(", ", devices.Select(static item => item.Name))})";
+    }
+
+    private void ReplaceCameras(IReadOnlyList<CameraDevice> devices)
+    {
+        var previous = SelectedCamera?.Index;
+        CameraDevices.Clear();
+        foreach (var device in devices)
+        {
+            CameraDevices.Add(device);
+        }
+        SelectedCamera = CameraDevices.FirstOrDefault(device => device.Index == previous)
+            ?? CameraDevices.FirstOrDefault();
     }
 
     [RelayCommand]
@@ -719,6 +868,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 TaskTitle,
                 CurrentSubtask,
                 _userRelevantTargets.ToArray());
+            ConsiderEvidence(context.WindowTitle, context.ProcessName);
             var userMarkedRelevant = TreatCurrentWindowAsRelevant
                 || _userRelevantTargets.Contains(ContextIdentity(context));
             var relevance = _taskPlanner is null
@@ -758,6 +908,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 raw.IsSecureWindow,
                 _services.Inference.IsAvailable));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
+            await _services.Overlays.UpdateAttentionAsync(prediction);
             ApplyPrediction(prediction);
         }
         catch (Exception error)
@@ -868,6 +1019,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         CurrentSubtask = state.Progress.CurrentStep?.Title ?? "Task complete";
         TaskProgressLabel = state.ProgressLabel;
+        IsPlanComplete = state.Progress.CurrentStep is null;
+        if (state.Progress.PendingSuggestion is null)
+        {
+            ClearSuggestion();
+        }
         PlanSource = state.ErrorCode is null
             ? state.Source
             : $"{state.Source} · {state.ErrorCode.Replace('_', ' ')}";
@@ -1006,13 +1162,29 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 .Select(static result => $"{result.Feature}: {result.Status}"));
             if (string.IsNullOrWhiteSpace(ToolkitStatus))
             {
-                ToolkitStatus = "Desktop tools off";
+                ToolkitStatus = IsRunning
+                    ? "Desktop tools off"
+                    : "Desktop tools arm when a focus session starts";
             }
+            UpdateBrowserStatus();
         }
         catch (Exception error)
         {
             ToolkitStatus = $"Desktop toolkit unavailable: {error.Message}";
         }
+    }
+
+    private void UpdateBrowserStatus()
+    {
+        IsBrowserConnected = _services.BrowserBridge.IsConnected;
+        var wanted = new List<string>();
+        if (BlurImagesEnabled) wanted.Add("image blur");
+        if (HideFutureTextEnabled) wanted.Add("future-text mask");
+        if (SuppressAnimationsEnabled) wanted.Add("animation pause");
+        var features = wanted.Count == 0 ? "no page tools selected" : string.Join(", ", wanted);
+        BrowserStatus = IsBrowserConnected
+            ? $"Browser extension connected · {features} apply on web pages"
+            : $"Browser extension not connected · {features} only work on web pages once the Anchor extension is loaded (browser\\anchor-extension). PDFs and desktop apps get the desktop tools instead.";
     }
 
     [DllImport("user32.dll")]

@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Anchor_Desktop.ViewModels;
 
@@ -16,8 +17,19 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        Sections.SelectedItem = FocusItem;
         Loaded += async (_, _) => await ViewModel.InitializeAsync();
         Unloaded += async (_, _) => await ViewModel.DisposeAsync();
+    }
+
+    private void Sections_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "Focus";
+        FocusSection.Visibility = tag == "Focus" ? Visibility.Visible : Visibility.Collapsed;
+        ToolsSection.Visibility = tag == "Tools" ? Visibility.Visible : Visibility.Collapsed;
+        CameraSection.Visibility = tag == "Camera" ? Visibility.Visible : Visibility.Collapsed;
+        InsightsSection.Visibility = tag == "Insights" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsSection.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void DeepSeekKeyBox_PasswordChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

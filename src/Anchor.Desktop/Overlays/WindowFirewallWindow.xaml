@@ -2,12 +2,13 @@
 <Window
     x:Class="Anchor_Desktop.Overlays.WindowFirewallWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Background="#8C11141B">
-        <Border BorderBrush="#996F7F9C" BorderThickness="2" CornerRadius="8" />
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4" Opacity="0.82">
-            <TextBlock Text="Paused by Anchor" FontWeight="SemiBold" HorizontalAlignment="Center" />
-            <TextBlock Text="This window looks unrelated to the current step" FontSize="12" />
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Anchor overlay">
+    <Grid Background="#FF11141B">
+        <Border BorderBrush="#FF6F7F9C" BorderThickness="2" CornerRadius="8" />
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
+            <TextBlock Text="Paused by Anchor" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="#FFE6ECF7" />
+            <TextBlock Text="This window looks unrelated to the current step" FontSize="12" Foreground="#FFBFC9DC" />
         </StackPanel>
     </Grid>
 </Window>

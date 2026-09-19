@@ -3,7 +3,7 @@ importScripts("adapter-state.js");
 const NATIVE_HOST = "com.anchor.desktop";
 const DEFAULTS = {
   imageBlur: true,
-  threshold: 0.62,
+  threshold: 0.5,
   futureTextMask: false,
   lookahead: 1,
   suppressAnimations: false,

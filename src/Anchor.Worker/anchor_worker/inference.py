@@ -16,6 +16,8 @@ class InferenceResult:
 
 
 class AttentionInference:
+    _baseline = 0.2
+
     def __init__(self, alpha: float = 0.35) -> None:
         if not 0 < alpha <= 1:
             raise ValueError("alpha must be in (0, 1]")
@@ -23,6 +25,7 @@ class AttentionInference:
         self._smoothed: float | None = None
         self._stuck_windows = 0
         self._gaze_away_windows = 0
+        self._agreeing_windows = 0
 
     def predict(self, features: NormalizedFeatures) -> InferenceResult:
         started = time.perf_counter()
@@ -34,6 +37,9 @@ class AttentionInference:
         linear += (1 - features.app_relevance) * 2.4
         if features.app_relevance < 0.35:
             reasons.append("low_task_relevance")
+        if features.app_relevance < 0.2:
+            linear += 0.9
+            reasons.append("off_task_window")
 
         linear += min(features.idle_seconds, 30) * 0.055
         if features.idle_seconds >= 5:
@@ -69,13 +75,15 @@ class AttentionInference:
             linear -= min(features.key_count, 20) * 0.035
 
         raw = 1 / (1 + math.exp(-max(-20.0, min(20.0, linear))))
-        self._smoothed = (
-            raw
-            if self._smoothed is None
-            else (self._alpha * raw) + ((1 - self._alpha) * self._smoothed)
-        )
+        previous = self._baseline if self._smoothed is None else self._smoothed
+        self._smoothed = (self._alpha * raw) + ((1 - self._alpha) * previous)
         probability = max(0.0, min(1.0, self._smoothed))
-        confidence = max(0.0, min(1.0, abs(probability - 0.5) * 2))
+        same_side = (raw >= 0.5) == (probability >= 0.5)
+        self._agreeing_windows = self._agreeing_windows + 1 if same_side else 0
+        confidence = max(
+            0.0,
+            min(1.0, abs(probability - 0.5) * 2 + 0.12 * min(self._agreeing_windows, 4)),
+        )
         if not reasons:
             reasons.append("stable_task_activity")
 

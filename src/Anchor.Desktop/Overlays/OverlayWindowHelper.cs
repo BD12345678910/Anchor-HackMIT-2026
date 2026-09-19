@@ -11,6 +11,8 @@ internal static class OverlayWindowHelper
     private const long WsExTransparent = 0x00000020L;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExNoActivate = 0x08000000L;
+    private const long WsExLayered = 0x00080000L;
+    private const uint LwaAlpha = 0x00000002;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
     public static void Configure(Window window, int width, int height, bool clickThrough = false, bool fullScreen = false)
@@ -42,6 +44,18 @@ internal static class OverlayWindowHelper
             var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
             SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style | WsExTransparent | WsExToolWindow | WsExNoActivate));
         }
+    }
+
+    /// <summary>
+    /// WinUI 3 windows render opaque; a layered-window alpha makes the whole overlay translucent so the
+    /// desktop stays visible underneath.
+    /// </summary>
+    public static void MakeTranslucent(Window window, byte alpha)
+    {
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+        SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style | WsExLayered));
+        SetLayeredWindowAttributes(handle, 0, alpha, LwaAlpha);
     }
 
     public static void Center(Window window, int width, int height)
@@ -130,4 +144,8 @@ internal static class OverlayWindowHelper
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     private static extern IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr value);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetLayeredWindowAttributes(IntPtr window, uint colorKey, byte alpha, uint flags);
 }

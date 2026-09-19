@@ -2,7 +2,8 @@
 <Window
     x:Class="Anchor_Desktop.Overlays.RecoveryCardWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Anchor overlay">
     <Grid Background="#F7182030" Padding="28">
         <StackPanel Spacing="14">
             <TextBlock Text="Let's restore your place" FontSize="24" FontWeight="SemiBold" />

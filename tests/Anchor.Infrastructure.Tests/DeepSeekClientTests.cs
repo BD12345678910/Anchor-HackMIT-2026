@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Anchor.Core.Models;
+using Anchor.Core.Services;
 using Anchor.Infrastructure.DeepSeek;
 
 namespace Anchor.Infrastructure.Tests;
@@ -41,7 +42,9 @@ public sealed class DeepSeekClientTests
         Assert.Equal("Local fallback", result.Source);
         Assert.Equal("deepseek_unavailable", result.ErrorCode);
         Assert.Equal(2, handler.RequestCount);
-        Assert.Single(result.Plan.Steps);
+        Assert.Equal(
+            LocalTaskPlanner.Plan("Read chapter 4").Steps.Select(step => step.Title),
+            result.Plan.Steps.Select(step => step.Title));
     }
 
     [Fact]
@@ -54,7 +57,9 @@ public sealed class DeepSeekClientTests
 
         Assert.True(result.IsFallback);
         Assert.Equal("invalid_deepseek_json", result.ErrorCode);
-        Assert.Equal("Read chapter 4", result.Plan.Steps[0].Title);
+        Assert.Equal("Local fallback", result.Source);
+        Assert.All(result.Plan.Steps, step => Assert.DoesNotContain("{", step.Title));
+        Assert.Contains("chapter 4", result.Plan.Steps[0].Title);
     }
 
     [Fact]

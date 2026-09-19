@@ -94,7 +94,11 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             timestamp: now);
     }
 
-    public void ProcessRawInput(IntPtr rawInputHandle) => _input?.ProcessRawInput(rawInputHandle);
+    /// <summary>Feeds raw input to the active session (if any) and returns the key-down virtual key.</summary>
+    public ushort? ProcessRawInput(IntPtr rawInputHandle) =>
+        _input is null
+            ? InputActivitySensor.PeekKeyDown(rawInputHandle)
+            : _input.ProcessRawInput(rawInputHandle);
 
     public ContextObservation CreateContextObservation(
         string taskTitle,

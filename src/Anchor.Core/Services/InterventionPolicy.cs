@@ -4,8 +4,10 @@ namespace Anchor.Core.Services;
 
 public sealed class InterventionPolicy
 {
+    private static readonly TimeSpan BeaconCooldown = TimeSpan.FromSeconds(45);
     private readonly Func<DateTimeOffset> _clock;
     private DateTimeOffset _nextAllowedAt = DateTimeOffset.MinValue;
+    private InterventionKind _lastKind = InterventionKind.None;
 
     public InterventionPolicy(Func<DateTimeOffset>? clock = null)
     {
@@ -36,12 +38,6 @@ public sealed class InterventionPolicy
                 TimeSpan.Zero);
         }
 
-        var now = _clock();
-        if (now < _nextAllowedAt)
-        {
-            return None("cooldown");
-        }
-
         var threshold = Math.Max(CurrentThreshold, preferences.MinimumConfidence);
         if (prediction.Confidence < threshold)
         {
@@ -61,12 +57,26 @@ public sealed class InterventionPolicy
             return None("not_needed");
         }
 
-        _nextAllowedAt = now + preferences.InterventionCooldown;
+        var now = _clock();
+        if (now >= _nextAllowedAt)
+        {
+            _lastKind = InterventionKind.None;
+        }
+        else if (Severity(kind) <= Severity(_lastKind))
+        {
+            return None("cooldown");
+        }
+
+        var cooldown = kind == InterventionKind.BeaconPulse
+            ? (BeaconCooldown < preferences.InterventionCooldown ? BeaconCooldown : preferences.InterventionCooldown)
+            : preferences.InterventionCooldown;
+        _lastKind = kind;
+        _nextAllowedAt = now + cooldown;
         return new InterventionDecision(
             kind,
             prediction.ReasonCodes.FirstOrDefault() ?? "attention_state",
             prediction.Confidence,
-            preferences.InterventionCooldown);
+            cooldown);
     }
 
     public void RecordResponse(InterventionResponse response)
@@ -80,6 +90,17 @@ public sealed class InterventionPolicy
             _ => CurrentThreshold
         };
     }
+
+    private static int Severity(InterventionKind kind) => kind switch
+    {
+        InterventionKind.None => 0,
+        InterventionKind.BeaconPulse => 1,
+        InterventionKind.VisualFilter => 2,
+        InterventionKind.RecoveryCard => 3,
+        InterventionKind.BreakSuggestion => 3,
+        InterventionKind.IntentionGate => 4,
+        _ => 0
+    };
 
     private static InterventionDecision None(string reason) =>
         new(InterventionKind.None, reason, 0, TimeSpan.Zero);

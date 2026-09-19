@@ -51,7 +51,8 @@ public sealed class AppServices : IAsyncDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Anchor");
         var store = new SqliteEventStore(Path.Combine(appData, "anchor.db"));
-        var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
+        var repositoryRoot = FindRepositoryRoot(
+            Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory);
         var worker = new InferenceWorkerClient(InferenceWorkerOptions.CreateDefault(repositoryRoot));
         var inference = new InferenceEngineAdapter(worker);
         var browserContext = new BrowserContextTracker();

@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Anchor_Desktop"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="Anchor Settings"
+    Title="Anchor"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
         <MicaBackdrop />
@@ -18,7 +18,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="Anchor" Subtitle="attention support, local by default">
+        <TitleBar x:Name="AppTitleBar" Title="Anchor" Subtitle="study assistant · local by default">
             <TitleBar.IconSource>
                 <ImageIconSource ImageSource="Assets/AppIcon.ico" />
             </TitleBar.IconSource>
