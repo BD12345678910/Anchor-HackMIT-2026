@@ -22,7 +22,8 @@ public sealed record InferenceWorkerOptions(
     string WorkerDirectory,
     TimeSpan StartupTimeout,
     TimeSpan RpcDeadline,
-    int MaxRestarts)
+    int MaxRestarts,
+    string? SettingsDirectory = null)
 {
     public static InferenceWorkerOptions CreateDefault(string repositoryRoot) => new(
         Path.Combine(repositoryRoot, ".venv", "Scripts", "python.exe"),
@@ -34,7 +35,7 @@ public sealed record InferenceWorkerOptions(
 
 public sealed class InferenceWorkerClient : IAsyncDisposable
 {
-    private const uint ProtocolVersion = 1;
+    private const uint ProtocolVersion = 2;
     private readonly InferenceWorkerOptions _options;
     private readonly AttentionStateMachine _fallback = AttentionStateMachine.CreateDefault();
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
@@ -159,6 +160,156 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
         }
     }
 
+    public async Task<IReadOnlyList<CameraDevice>> ListCamerasAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return [];
+        }
+
+        var call = _client.ListCamerasAsync(
+            new ListCamerasRequest(),
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return reply.Devices
+            .Select(static item => new CameraDevice(checked((int)item.Index), item.Name))
+            .ToArray();
+    }
+
+    public async Task<GazeConfigurationResult> ConfigureGazeAsync(
+        GazeConfiguration configuration,
+        string displaySignature,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new GazeConfigurationResult(false, "worker unavailable", null);
+        }
+
+        var call = _client.ConfigureGazeAsync(
+            new ConfigureGazeRequest
+            {
+                Configuration = ToMessage(configuration),
+                DisplaySignature = displaySignature ?? string.Empty
+            },
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return new GazeConfigurationResult(
+            reply.Accepted,
+            reply.Error,
+            reply.Accepted ? FromMessage(reply.Configuration) : null);
+    }
+
+    public async Task<GazeStatus> StartGazeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new GazeStatus(false, "worker unavailable");
+        }
+        var call = _client.StartGazeAsync(
+            new StartGazeRequest(),
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return new GazeStatus(reply.Running, reply.Error);
+    }
+
+    public async Task<GazeSample> ReadGazeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return GazeSample.Unavailable("worker unavailable");
+        }
+        var call = _client.ReadGazeAsync(
+            new ReadGazeRequest(),
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        var point = reply.OutcomeCase == GazeSampleReply.OutcomeOneofCase.Point
+            ? reply.Point
+            : null;
+        var unavailableReason = reply.OutcomeCase == GazeSampleReply.OutcomeOneofCase.Unavailable
+            ? reply.Unavailable.Reason
+            : string.Empty;
+        var timestamp = reply.TimestampUnixMs > 0
+            ? DateTimeOffset.FromUnixTimeMilliseconds(reply.TimestampUnixMs)
+            : DateTimeOffset.MinValue;
+        return new GazeSample(
+            point?.X,
+            point?.Y,
+            reply.Confidence,
+            reply.FacePresent,
+            timestamp,
+            reply.Yaw,
+            reply.Pitch,
+            reply.Roll,
+            reply.PreviewJpeg.ToByteArray(),
+            unavailableReason);
+    }
+
+    public async Task<CalibrationProgress> AddCalibrationSampleAsync(
+        double targetX,
+        double targetY,
+        CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new CalibrationProgress(false, 0, "worker unavailable");
+        }
+        var call = _client.AddCalibrationSampleAsync(
+            new AddCalibrationSampleRequest { TargetX = targetX, TargetY = targetY },
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return new CalibrationProgress(reply.Accepted, checked((int)reply.SampleCount), reply.Error);
+    }
+
+    public async Task<CalibrationResult> FinishCalibrationAsync(
+        string displaySignature,
+        CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new CalibrationResult(false, 0, 0, 0, "worker unavailable");
+        }
+        var call = _client.FinishCalibrationAsync(
+            new FinishCalibrationRequest { DisplaySignature = displaySignature ?? string.Empty },
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return new CalibrationResult(
+            reply.Accepted,
+            checked((int)reply.SampleCount),
+            checked((int)reply.InlierCount),
+            reply.MedianError,
+            reply.Error);
+    }
+
+    public async Task<GazeStatus> StopGazeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new GazeStatus(false, "worker unavailable");
+        }
+        var call = _client.StopGazeAsync(
+            new StopGazeRequest(),
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return new GazeStatus(reply.Running, reply.Error);
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.WaitAsync(cancellationToken);
@@ -232,6 +383,10 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
         startInfo.ArgumentList.Add(token);
         startInfo.Environment["PYTHONUNBUFFERED"] = "1";
         startInfo.Environment["PYTHONPATH"] = _options.WorkerDirectory;
+        if (!string.IsNullOrWhiteSpace(_options.SettingsDirectory))
+        {
+            startInfo.Environment["ANCHOR_SETTINGS_DIR"] = _options.SettingsDirectory;
+        }
 
         _process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Worker process could not be started.");
@@ -318,6 +473,28 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             ? "Worker exited before reporting readiness."
             : $"Worker exited before reporting readiness: {error.Trim()}";
     }
+
+    private static GazeConfigurationMessage ToMessage(GazeConfiguration configuration) => new()
+    {
+        CameraIndex = checked((uint)configuration.CameraIndex),
+        Mirror = configuration.Mirror,
+        RotationDegrees = configuration.RotationDegrees,
+        OffsetX = configuration.OffsetX,
+        OffsetY = configuration.OffsetY,
+        Smoothing = configuration.Smoothing,
+        Sensitivity = configuration.Sensitivity,
+        MinConfidence = configuration.MinimumConfidence
+    };
+
+    private static GazeConfiguration FromMessage(GazeConfigurationMessage message) => new(
+        checked((int)message.CameraIndex),
+        message.Mirror,
+        message.RotationDegrees,
+        message.OffsetX,
+        message.OffsetY,
+        message.Smoothing,
+        message.Sensitivity,
+        message.MinConfidence);
 
     private sealed record WorkerReadiness(
         string Status,

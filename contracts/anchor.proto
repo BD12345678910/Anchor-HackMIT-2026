@@ -7,6 +7,13 @@ service InferenceWorker {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc PredictAttention(PredictAttentionRequest) returns (AttentionPredictionReply);
   rpc AnalyzeFrame(AnalyzeFrameRequest) returns (AnalyzeFrameReply);
+  rpc ListCameras(ListCamerasRequest) returns (ListCamerasReply);
+  rpc ConfigureGaze(ConfigureGazeRequest) returns (GazeConfigurationReply);
+  rpc StartGaze(StartGazeRequest) returns (GazeStatusReply);
+  rpc ReadGaze(ReadGazeRequest) returns (GazeSampleReply);
+  rpc AddCalibrationSample(AddCalibrationSampleRequest) returns (CalibrationProgressReply);
+  rpc FinishCalibration(FinishCalibrationRequest) returns (CalibrationResultReply);
+  rpc StopGaze(StopGazeRequest) returns (GazeStatusReply);
   rpc Shutdown(ShutdownRequest) returns (ShutdownReply);
 }
 
@@ -79,6 +86,92 @@ message VisualRegion {
 
 message Unavailable {
   string reason = 1;
+}
+
+message ListCamerasRequest {}
+
+message CameraDeviceMessage {
+  uint32 index = 1;
+  string name = 2;
+}
+
+message ListCamerasReply {
+  repeated CameraDeviceMessage devices = 1;
+  Unavailable unavailable = 2;
+}
+
+message GazeConfigurationMessage {
+  uint32 camera_index = 1;
+  bool mirror = 2;
+  int32 rotation_degrees = 3;
+  double offset_x = 4;
+  double offset_y = 5;
+  double smoothing = 6;
+  double sensitivity = 7;
+  double min_confidence = 8;
+}
+
+message ConfigureGazeRequest {
+  GazeConfigurationMessage configuration = 1;
+  string display_signature = 2;
+}
+
+message GazeConfigurationReply {
+  bool accepted = 1;
+  string error = 2;
+  GazeConfigurationMessage configuration = 3;
+}
+
+message StartGazeRequest {}
+message StopGazeRequest {}
+
+message GazeStatusReply {
+  bool running = 1;
+  string error = 2;
+}
+
+message ReadGazeRequest {}
+
+message GazePoint {
+  double x = 1;
+  double y = 2;
+}
+
+message GazeSampleReply {
+  oneof outcome {
+    GazePoint point = 1;
+    Unavailable unavailable = 2;
+  }
+  double confidence = 3;
+  bool face_present = 4;
+  int64 timestamp_unix_ms = 5;
+  double yaw = 6;
+  double pitch = 7;
+  double roll = 8;
+  bytes preview_jpeg = 9;
+}
+
+message AddCalibrationSampleRequest {
+  double target_x = 1;
+  double target_y = 2;
+}
+
+message CalibrationProgressReply {
+  bool accepted = 1;
+  uint32 sample_count = 2;
+  string error = 3;
+}
+
+message FinishCalibrationRequest {
+  string display_signature = 1;
+}
+
+message CalibrationResultReply {
+  bool accepted = 1;
+  uint32 sample_count = 2;
+  uint32 inlier_count = 3;
+  double median_error = 4;
+  string error = 5;
 }
 
 message ShutdownRequest {}

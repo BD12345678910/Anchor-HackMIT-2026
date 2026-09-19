@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using Anchor.Core.Models;
 using Anchor.Core.Services;
 using Anchor_Desktop.Services;
@@ -6,6 +7,9 @@ using Anchor.Infrastructure.DeepSeek;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage.Streams;
 
 namespace Anchor_Desktop.ViewModels;
 
@@ -16,7 +20,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly AppServices _services;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly DispatcherTimer _gazeTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private bool _tickInFlight;
+    private bool _gazeTickInFlight;
+    private int _calibrationIndex;
     private TaskSessionPlanner? _taskPlanner;
     private string? _plannedGoal;
 
@@ -24,10 +31,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         _services = services;
         _timer.Tick += Timer_Tick;
+        _gazeTimer.Tick += GazeTimer_Tick;
     }
 
     public ObservableCollection<TimelineItem> Timeline { get; } = [];
     public ObservableCollection<TaskStepItem> TaskSteps { get; } = [];
+    public ObservableCollection<CameraDevice> CameraDevices { get; } = [];
 
     [ObservableProperty] public partial string TaskTitle { get; set; } = "Finish the HackMIT project plan";
     [ObservableProperty] public partial bool IsRunning { get; set; }
@@ -53,6 +62,21 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string DeepSeekApiKey { get; set; } = string.Empty;
     [ObservableProperty] public partial string DeepSeekStatus { get; set; } = "Not configured";
     [ObservableProperty] public partial bool ReducedMotion { get; set; }
+    [ObservableProperty] public partial CameraDevice? SelectedCamera { get; set; }
+    [ObservableProperty] public partial bool GazeMirror { get; set; } = true;
+    [ObservableProperty] public partial double GazeRotationDegrees { get; set; }
+    [ObservableProperty] public partial double GazeOffsetX { get; set; }
+    [ObservableProperty] public partial double GazeOffsetY { get; set; }
+    [ObservableProperty] public partial double GazeSmoothing { get; set; } = 0.65;
+    [ObservableProperty] public partial double GazeSensitivity { get; set; } = 1.0;
+    [ObservableProperty] public partial double GazeMinimumConfidence { get; set; } = 0.45;
+    [ObservableProperty] public partial bool IsGazeRunning { get; set; }
+    [ObservableProperty] public partial string GazeStatusMessage { get; set; } = "Camera off · no gaze coordinates are inferred.";
+    [ObservableProperty] public partial string GazeCoordinates { get; set; } = "Unavailable";
+    [ObservableProperty] public partial string GazeConfidenceLabel { get; set; } = "—";
+    [ObservableProperty] public partial ImageSource? GazePreviewSource { get; set; }
+    [ObservableProperty] public partial string CalibrationTarget { get; set; } = "Top left";
+    [ObservableProperty] public partial string CalibrationProgressLabel { get; set; } = "0 of 9";
 
     partial void OnVisualFilterEnabledChanged(bool value) => _services.Overlays.EnableVisualFilter = value;
     partial void OnPointerGuardEnabledChanged(bool value) => _services.Overlays.EnablePointerGuard = value;
@@ -327,10 +351,154 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         StatusMessage = "All locally stored session events were deleted.";
     }
 
+    [RelayCommand]
+    private async Task RefreshCamerasAsync()
+    {
+        IsBusy = true;
+        GazeStatusMessage = "Checking available cameras…";
+        try
+        {
+            if (!await _services.Inference.StartAsync())
+            {
+                GazeStatusMessage = "The local vision worker could not start.";
+                return;
+            }
+            var devices = await _services.Inference.ListCamerasAsync();
+            CameraDevices.Clear();
+            foreach (var device in devices)
+            {
+                CameraDevices.Add(device);
+            }
+            SelectedCamera = CameraDevices.FirstOrDefault();
+            GazeStatusMessage = devices.Count == 0
+                ? "No openable camera was found. Camera access may be disabled in Windows Settings."
+                : $"Found {devices.Count} camera{(devices.Count == 1 ? string.Empty : "s")}.";
+        }
+        catch (Exception error)
+        {
+            GazeStatusMessage = $"Camera check failed: {error.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task StartGazeTestAsync()
+    {
+        if (IsGazeRunning || IsBusy)
+        {
+            return;
+        }
+        IsBusy = true;
+        try
+        {
+            if (!await _services.Inference.StartAsync())
+            {
+                GazeStatusMessage = "The local vision worker could not start.";
+                return;
+            }
+            var configured = await _services.Inference.ConfigureGazeAsync(
+                CreateGazeConfiguration(),
+                CreateDisplaySignature());
+            if (!configured.Accepted)
+            {
+                GazeStatusMessage = $"Settings rejected: {configured.Error}";
+                return;
+            }
+            var started = await _services.Inference.StartGazeAsync();
+            if (!started.Running)
+            {
+                GazeStatusMessage = $"Camera could not start: {started.Error}";
+                return;
+            }
+            _calibrationIndex = 0;
+            UpdateCalibrationLabel();
+            IsGazeRunning = true;
+            GazeStatusMessage = "Live gaze test running locally. Adjust settings, then calibrate all nine points.";
+            _gazeTimer.Start();
+        }
+        catch (Exception error)
+        {
+            GazeStatusMessage = $"Gaze test failed: {error.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ApplyGazeSettingsAsync()
+    {
+        if (!IsGazeRunning)
+        {
+            GazeStatusMessage = "Start Test Gaze before applying live adjustments.";
+            return;
+        }
+        var result = await _services.Inference.ConfigureGazeAsync(
+            CreateGazeConfiguration(),
+            CreateDisplaySignature());
+        GazeStatusMessage = result.Accepted
+            ? "Gaze adjustments saved. Calibration restarted because the geometry changed."
+            : $"Settings rejected: {result.Error}";
+        if (result.Accepted)
+        {
+            _calibrationIndex = 0;
+            UpdateCalibrationLabel();
+        }
+    }
+
+    [RelayCommand]
+    private async Task CaptureCalibrationPointAsync()
+    {
+        if (!IsGazeRunning)
+        {
+            GazeStatusMessage = "Start Test Gaze before calibration.";
+            return;
+        }
+        var point = CalibrationPoints[_calibrationIndex];
+        var progress = await _services.Inference.AddCalibrationSampleAsync(point.X, point.Y);
+        if (!progress.Accepted)
+        {
+            GazeStatusMessage = $"Hold your gaze on the target: {progress.Error}";
+            return;
+        }
+        _calibrationIndex++;
+        if (_calibrationIndex >= CalibrationPoints.Length)
+        {
+            var result = await _services.Inference.FinishCalibrationAsync(CreateDisplaySignature());
+            GazeStatusMessage = result.Accepted
+                ? $"Calibration ready · {result.InlierCount}/{result.SampleCount} inliers · median error {result.MedianError:P1}."
+                : $"Calibration failed: {result.Error}";
+            _calibrationIndex = 0;
+        }
+        UpdateCalibrationLabel();
+    }
+
+    [RelayCommand]
+    private async Task StopGazeTestAsync()
+    {
+        _gazeTimer.Stop();
+        await _services.Inference.StopGazeAsync();
+        IsGazeRunning = false;
+        GazePreviewSource = null;
+        GazeCoordinates = "Unavailable";
+        GazeConfidenceLabel = "—";
+        GazeStatusMessage = "Camera off · saved adjustments will be used next time.";
+    }
+
     public async ValueTask DisposeAsync()
     {
         _timer.Stop();
+        _gazeTimer.Stop();
         _timer.Tick -= Timer_Tick;
+        _gazeTimer.Tick -= GazeTimer_Tick;
+        if (IsGazeRunning)
+        {
+            await _services.Inference.StopGazeAsync();
+        }
         if (IsRunning)
         {
             await _services.Orchestrator.StopAsync();
@@ -362,6 +530,35 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         finally
         {
             _tickInFlight = false;
+        }
+    }
+
+    private async void GazeTimer_Tick(object? sender, object e)
+    {
+        if (_gazeTickInFlight || !IsGazeRunning)
+        {
+            return;
+        }
+        _gazeTickInFlight = true;
+        try
+        {
+            var sample = await _services.Inference.ReadGazeAsync();
+            GazeConfidenceLabel = $"{sample.Confidence:P0}";
+            GazeCoordinates = sample.Available
+                ? $"X {sample.X:0.000} · Y {sample.Y:0.000} · yaw {sample.Yaw:0.0}° · pitch {sample.Pitch:0.0}°"
+                : $"Unavailable · {sample.UnavailableReason}";
+            if (sample.PreviewJpeg.Length > 0)
+            {
+                GazePreviewSource = await CreateBitmapAsync(sample.PreviewJpeg);
+            }
+        }
+        catch (Exception error)
+        {
+            GazeStatusMessage = $"Gaze stream recovered from an error: {error.Message}";
+        }
+        finally
+        {
+            _gazeTickInFlight = false;
         }
     }
 
@@ -427,4 +624,65 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         var duration = TimeSpan.FromSeconds(Math.Max(0, seconds));
         return $"{(int)duration.TotalMinutes}m {duration.Seconds:00}s";
     }
+
+    private GazeConfiguration CreateGazeConfiguration() => new(
+        SelectedCamera?.Index ?? 0,
+        GazeMirror,
+        checked((int)GazeRotationDegrees),
+        GazeOffsetX,
+        GazeOffsetY,
+        GazeSmoothing,
+        GazeSensitivity,
+        GazeMinimumConfidence);
+
+    private static string CreateDisplaySignature()
+    {
+        var width = GetSystemMetrics(0);
+        var height = GetSystemMetrics(1);
+        var dpi = App.WindowHandle == IntPtr.Zero ? 96u : GetDpiForWindow(App.WindowHandle);
+        return $"{width}x{height}@{dpi}";
+    }
+
+    private void UpdateCalibrationLabel()
+    {
+        CalibrationProgressLabel = $"{_calibrationIndex} of {CalibrationPoints.Length}";
+        CalibrationTarget = CalibrationPointNames[
+            Math.Min(_calibrationIndex, CalibrationPointNames.Length - 1)];
+    }
+
+    private static async Task<ImageSource> CreateBitmapAsync(byte[] jpeg)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var writer = new DataWriter(stream.GetOutputStreamAt(0)))
+        {
+            writer.WriteBytes(jpeg);
+            await writer.StoreAsync();
+            await writer.FlushAsync();
+            writer.DetachStream();
+        }
+        stream.Seek(0);
+        var bitmap = new BitmapImage();
+        await bitmap.SetSourceAsync(stream);
+        return bitmap;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+
+    private static readonly (double X, double Y)[] CalibrationPoints =
+    [
+        (0.10, 0.10), (0.50, 0.10), (0.90, 0.10),
+        (0.10, 0.50), (0.50, 0.50), (0.90, 0.50),
+        (0.10, 0.90), (0.50, 0.90), (0.90, 0.90)
+    ];
+
+    private static readonly string[] CalibrationPointNames =
+    [
+        "Top left", "Top center", "Top right",
+        "Middle left", "Center", "Middle right",
+        "Bottom left", "Bottom center", "Bottom right"
+    ];
 }

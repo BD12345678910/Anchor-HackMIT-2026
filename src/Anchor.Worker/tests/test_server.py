@@ -23,7 +23,7 @@ def test_readiness_payload_is_machine_readable_and_loopback_only():
     assert payload["status"] == "ready"
     assert payload["host"] == "127.0.0.1"
     assert payload["port"] == 43123
-    assert payload["protocolVersion"] == 1
+    assert payload["protocolVersion"] == 2
     assert "secret" not in payload
 
 

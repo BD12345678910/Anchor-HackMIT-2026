@@ -83,6 +83,43 @@ public sealed class InferenceWorkerClientTests
         Assert.Contains("stuck_phrase", prediction.ReasonCodes);
     }
 
+    [Fact]
+    public async Task Real_worker_round_trips_gaze_configuration_and_never_fakes_missing_coordinates()
+    {
+        var root = FindRepositoryRoot();
+        var settingsDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"anchor-gaze-{Guid.NewGuid():N}");
+        var options = new InferenceWorkerOptions(
+            PythonExecutable: Path.Combine(root, ".venv", "Scripts", "python.exe"),
+            WorkerDirectory: Path.Combine(root, "src", "Anchor.Worker"),
+            StartupTimeout: TimeSpan.FromSeconds(5),
+            RpcDeadline: TimeSpan.FromSeconds(2),
+            MaxRestarts: 1,
+            SettingsDirectory: settingsDirectory);
+        await using var client = new InferenceWorkerClient(options);
+
+        Assert.True(await client.StartAsync(), client.LastError);
+        var configured = await client.ConfigureGazeAsync(new GazeConfiguration(
+            CameraIndex: 2,
+            Mirror: false,
+            RotationDegrees: 270,
+            OffsetX: 0.12,
+            OffsetY: -0.08,
+            Smoothing: 0.4,
+            Sensitivity: 1.35,
+            MinimumConfidence: 0.72), "1920x1080@100");
+        var sample = await client.ReadGazeAsync();
+
+        Assert.True(configured.Accepted, configured.Error);
+        Assert.Equal(2, configured.Configuration?.CameraIndex);
+        Assert.Equal(270, configured.Configuration?.RotationDegrees);
+        Assert.False(sample.Available);
+        Assert.Null(sample.X);
+        Assert.Null(sample.Y);
+        Assert.False(sample.FacePresent);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

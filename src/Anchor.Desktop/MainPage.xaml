@@ -142,6 +142,69 @@
                     </Border>
                     <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                         <StackPanel Spacing="12">
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Text="Test Gaze" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBlock Text="Private local camera test, tuning, and nine-point calibration"
+                                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Find cameras" Command="{x:Bind ViewModel.RefreshCamerasCommand}" />
+                                    <Button Content="Start" Command="{x:Bind ViewModel.StartGazeTestCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button Content="Stop" Command="{x:Bind ViewModel.StopGazeTestCommand}" />
+                                </StackPanel>
+                            </Grid>
+                            <ComboBox Header="Camera" ItemsSource="{x:Bind ViewModel.CameraDevices, Mode=OneWay}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedCamera, Mode=TwoWay}"
+                                      DisplayMemberPath="Name" PlaceholderText="Select Find cameras first" />
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <ToggleSwitch Header="Mirror camera" IsOn="{x:Bind ViewModel.GazeMirror, Mode=TwoWay}" />
+                                <NumberBox Grid.Column="1" Header="Rotation (0 / 90 / 180 / 270)" Minimum="0" Maximum="270" SmallChange="90"
+                                           SpinButtonPlacementMode="Inline" Value="{x:Bind ViewModel.GazeRotationDegrees, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Text="Horizontal offset" FontSize="12" />
+                            <Slider Minimum="-0.5" Maximum="0.5" StepFrequency="0.01" Value="{x:Bind ViewModel.GazeOffsetX, Mode=TwoWay}" />
+                            <TextBlock Text="Vertical offset" FontSize="12" />
+                            <Slider Minimum="-0.5" Maximum="0.5" StepFrequency="0.01" Value="{x:Bind ViewModel.GazeOffsetY, Mode=TwoWay}" />
+                            <TextBlock Text="Smoothing" FontSize="12" />
+                            <Slider Minimum="0" Maximum="0.95" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeSmoothing, Mode=TwoWay}" />
+                            <TextBlock Text="Sensitivity" FontSize="12" />
+                            <Slider Minimum="0.25" Maximum="3" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeSensitivity, Mode=TwoWay}" />
+                            <TextBlock Text="Minimum confidence" FontSize="12" />
+                            <Slider Minimum="0" Maximum="1" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeMinimumConfidence, Mode=TwoWay}" />
+                            <Button Content="Apply adjustments" HorizontalAlignment="Left" Command="{x:Bind ViewModel.ApplyGazeSettingsCommand}" />
+                            <Border Height="190" CornerRadius="12" Background="#FF111722" BorderBrush="#334A5A77" BorderThickness="1">
+                                <Grid>
+                                    <Image Source="{x:Bind ViewModel.GazePreviewSource, Mode=OneWay}" Stretch="UniformToFill" />
+                                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
+                                        <TextBlock Text="{x:Bind ViewModel.GazeCoordinates, Mode=OneWay}" FontSize="11" />
+                                    </Border>
+                                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
+                                        <TextBlock Text="{x:Bind ViewModel.GazeConfidenceLabel, Mode=OneWay}" Foreground="#AFC1FF" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                            <Border Padding="12" CornerRadius="12" Background="#241C2941">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Nine-point calibration" FontWeight="SemiBold" />
+                                        <TextBlock Text="Look at the named screen position and hold still, then capture."
+                                                   FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{x:Bind ViewModel.CalibrationTarget, Mode=OneWay}" FontSize="18" Foreground="#AFC1FF" Margin="0,8,0,0" />
+                                        <TextBlock Text="{x:Bind ViewModel.CalibrationProgressLabel, Mode=OneWay}" FontSize="12" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Capture point" VerticalAlignment="Center"
+                                            Command="{x:Bind ViewModel.CaptureCalibrationPointCommand}" />
+                                </Grid>
+                            </Border>
+                            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
+                                     Message="{x:Bind ViewModel.GazeStatusMessage, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="12">
                             <TextBlock Text="Focus toolkit" FontSize="19" FontWeight="SemiBold" />
                             <ToggleSwitch Header="Dynamic image blur" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.BlurImagesEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Hide future text" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.HideFutureTextEnabled, Mode=TwoWay}" />
