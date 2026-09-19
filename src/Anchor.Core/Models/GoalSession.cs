@@ -4,6 +4,8 @@ namespace Anchor.Core.Models;
 
 public sealed record GoalSession(Guid Id, string Title, DateTimeOffset StartedAt)
 {
+    public TaskPlan? Plan { get; init; }
+
     public static GoalSession Create(string title, DateTimeOffset startedAt)
     {
         ArgumentNullException.ThrowIfNull(title);
@@ -19,4 +21,7 @@ public sealed record GoalSession(Guid Id, string Title, DateTimeOffset StartedAt
 
         return new GoalSession(Guid.NewGuid(), normalized, startedAt);
     }
+
+    public GoalSession WithPlan(TaskPlan plan) =>
+        this with { Plan = Services.TaskPlanManager.ValidateAndNormalize(plan) };
 }
