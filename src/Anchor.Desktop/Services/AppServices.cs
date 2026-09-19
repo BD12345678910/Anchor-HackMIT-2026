@@ -20,6 +20,7 @@ public sealed class AppServices : IAsyncDisposable
         SafetyWatchdog watchdog,
         DeepSeekSettingsStore deepSeekSettings,
         NativeBridgeServer browserBridge,
+        StudyRecordingService recording,
         HttpClient deepSeekHttpClient)
     {
         Store = store;
@@ -30,6 +31,7 @@ public sealed class AppServices : IAsyncDisposable
         Watchdog = watchdog;
         DeepSeekSettings = deepSeekSettings;
         BrowserBridge = browserBridge;
+        Recording = recording;
         _deepSeekHttpClient = deepSeekHttpClient;
     }
 
@@ -41,6 +43,7 @@ public sealed class AppServices : IAsyncDisposable
     public SafetyWatchdog Watchdog { get; }
     public DeepSeekSettingsStore DeepSeekSettings { get; }
     public NativeBridgeServer BrowserBridge { get; }
+    public StudyRecordingService Recording { get; }
 
     public static AppServices Create()
     {
@@ -58,6 +61,8 @@ public sealed class AppServices : IAsyncDisposable
         browserBridge.Start();
         var overlays = new OverlayPresenter(browserBridge);
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);
+        var recording = new StudyRecordingService(inference, orchestrator);
+        orchestrator.InterventionPresented += recording.RecordIntervention;
         var watchdog = new SafetyWatchdog(overlays, TimeSpan.FromSeconds(30));
         var deepSeekSettings = new DeepSeekSettingsStore(Path.Combine(appData, "settings.json"));
         var deepSeekHttpClient = new HttpClient();
@@ -70,6 +75,7 @@ public sealed class AppServices : IAsyncDisposable
             watchdog,
             deepSeekSettings,
             browserBridge,
+            recording,
             deepSeekHttpClient);
     }
 
@@ -93,6 +99,7 @@ public sealed class AppServices : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Watchdog.Signal(SafetyReleaseReason.Shutdown);
+        await Recording.DisposeAsync();
         await Orchestrator.StopAsync();
         Sensors.Dispose();
         await Inference.DisposeAsync();

@@ -64,6 +64,31 @@ class InferenceWorkerStub(object):
                 request_serializer=anchor__pb2.StopGazeRequest.SerializeToString,
                 response_deserializer=anchor__pb2.GazeStatusReply.FromString,
                 )
+        self.StartRecording = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/StartRecording',
+                request_serializer=anchor__pb2.StartRecordingRequest.SerializeToString,
+                response_deserializer=anchor__pb2.RecordingManifestReply.FromString,
+                )
+        self.AppendRecordingEvent = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/AppendRecordingEvent',
+                request_serializer=anchor__pb2.AppendRecordingEventRequest.SerializeToString,
+                response_deserializer=anchor__pb2.RecordingStatusReply.FromString,
+                )
+        self.AppendRecordingSample = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/AppendRecordingSample',
+                request_serializer=anchor__pb2.AppendRecordingSampleRequest.SerializeToString,
+                response_deserializer=anchor__pb2.RecordingStatusReply.FromString,
+                )
+        self.GetRecordingStatus = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/GetRecordingStatus',
+                request_serializer=anchor__pb2.GetRecordingStatusRequest.SerializeToString,
+                response_deserializer=anchor__pb2.RecordingStatusReply.FromString,
+                )
+        self.StopRecording = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/StopRecording',
+                request_serializer=anchor__pb2.StopRecordingRequest.SerializeToString,
+                response_deserializer=anchor__pb2.RecordingStatusReply.FromString,
+                )
         self.Shutdown = channel.unary_unary(
                 '/anchor.v1.InferenceWorker/Shutdown',
                 request_serializer=anchor__pb2.ShutdownRequest.SerializeToString,
@@ -134,6 +159,36 @@ class InferenceWorkerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartRecording(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AppendRecordingEvent(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AppendRecordingSample(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRecordingStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopRecording(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Shutdown(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -192,6 +247,31 @@ def add_InferenceWorkerServicer_to_server(servicer, server):
                     servicer.StopGaze,
                     request_deserializer=anchor__pb2.StopGazeRequest.FromString,
                     response_serializer=anchor__pb2.GazeStatusReply.SerializeToString,
+            ),
+            'StartRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartRecording,
+                    request_deserializer=anchor__pb2.StartRecordingRequest.FromString,
+                    response_serializer=anchor__pb2.RecordingManifestReply.SerializeToString,
+            ),
+            'AppendRecordingEvent': grpc.unary_unary_rpc_method_handler(
+                    servicer.AppendRecordingEvent,
+                    request_deserializer=anchor__pb2.AppendRecordingEventRequest.FromString,
+                    response_serializer=anchor__pb2.RecordingStatusReply.SerializeToString,
+            ),
+            'AppendRecordingSample': grpc.unary_unary_rpc_method_handler(
+                    servicer.AppendRecordingSample,
+                    request_deserializer=anchor__pb2.AppendRecordingSampleRequest.FromString,
+                    response_serializer=anchor__pb2.RecordingStatusReply.SerializeToString,
+            ),
+            'GetRecordingStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRecordingStatus,
+                    request_deserializer=anchor__pb2.GetRecordingStatusRequest.FromString,
+                    response_serializer=anchor__pb2.RecordingStatusReply.SerializeToString,
+            ),
+            'StopRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopRecording,
+                    request_deserializer=anchor__pb2.StopRecordingRequest.FromString,
+                    response_serializer=anchor__pb2.RecordingStatusReply.SerializeToString,
             ),
             'Shutdown': grpc.unary_unary_rpc_method_handler(
                     servicer.Shutdown,
@@ -375,6 +455,91 @@ class InferenceWorker(object):
         return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/StopGaze',
             anchor__pb2.StopGazeRequest.SerializeToString,
             anchor__pb2.GazeStatusReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StartRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/StartRecording',
+            anchor__pb2.StartRecordingRequest.SerializeToString,
+            anchor__pb2.RecordingManifestReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def AppendRecordingEvent(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/AppendRecordingEvent',
+            anchor__pb2.AppendRecordingEventRequest.SerializeToString,
+            anchor__pb2.RecordingStatusReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def AppendRecordingSample(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/AppendRecordingSample',
+            anchor__pb2.AppendRecordingSampleRequest.SerializeToString,
+            anchor__pb2.RecordingStatusReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetRecordingStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/GetRecordingStatus',
+            anchor__pb2.GetRecordingStatusRequest.SerializeToString,
+            anchor__pb2.RecordingStatusReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StopRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/StopRecording',
+            anchor__pb2.StopRecordingRequest.SerializeToString,
+            anchor__pb2.RecordingStatusReply.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

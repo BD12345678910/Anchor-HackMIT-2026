@@ -620,6 +620,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 raw.IsSecureWindow,
                 _services.Inference.IsAvailable));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
+            if (_services.Recording.IsRecording)
+            {
+                await _services.Recording.AppendSampleAsync(gaze, prediction, TaskTitle, CurrentSubtask);
+            }
             ApplyPrediction(prediction);
         }
         catch (Exception error)

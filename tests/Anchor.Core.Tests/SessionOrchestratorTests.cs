@@ -52,6 +52,20 @@ public sealed class SessionOrchestratorTests
     }
 
     [Fact]
+    public async Task Baseline_mode_records_attention_without_presenting_interventions()
+    {
+        var fixture = new Fixture();
+        await fixture.Orchestrator.StartAsync("Baseline reading trial");
+        fixture.Orchestrator.InterventionsEnabled = false;
+
+        var prediction = await fixture.Orchestrator.ReportDistractedAsync();
+
+        Assert.Equal(AttentionState.Distracted, prediction.State);
+        Assert.Empty(fixture.Presenter.Presentations);
+        Assert.NotNull(fixture.Orchestrator.Progress);
+    }
+
+    [Fact]
     public async Task Missing_worker_keeps_session_in_deterministic_mode()
     {
         var fixture = new Fixture(workerAvailable: false);

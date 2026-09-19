@@ -35,7 +35,7 @@ public sealed record InferenceWorkerOptions(
 
 public sealed class InferenceWorkerClient : IAsyncDisposable
 {
-    private const uint ProtocolVersion = 2;
+    private const uint ProtocolVersion = 3;
     private readonly InferenceWorkerOptions _options;
     private readonly AttentionStateMachine _fallback = AttentionStateMachine.CreateDefault();
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
@@ -310,6 +310,96 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
         return new GazeStatus(reply.Running, reply.Error);
     }
 
+    public async Task<(StudyRecordingManifest? Manifest, string? Error)> StartRecordingAsync(
+        string outputDirectory,
+        TrialMode trialMode,
+        string participantCode,
+        int displayIndex = 1,
+        int fps = 15,
+        CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return (null, "worker_unavailable");
+        }
+        var call = _client.StartRecordingAsync(
+            new StartRecordingRequest
+            {
+                OutputDirectory = outputDirectory,
+                TrialMode = trialMode == TrialMode.Baseline ? "baseline" : "anchor_enabled",
+                ParticipantCode = participantCode,
+                DisplayIndex = checked((uint)Math.Max(1, displayIndex)),
+                Fps = checked((uint)Math.Clamp(fps, 1, 60))
+            },
+            _headers,
+            DateTime.UtcNow + TimeSpan.FromSeconds(10),
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        if (!reply.Accepted)
+        {
+            return (null, reply.Error);
+        }
+        return (new StudyRecordingManifest(
+            reply.TrialId,
+            trialMode,
+            reply.VideoPath,
+            reply.EventsPath,
+            reply.SamplesPath,
+            reply.SummaryPath,
+            reply.ManifestPath), null);
+    }
+
+    public Task<StudyRecordingStatus> AppendRecordingEventAsync(
+        IReadOnlyDictionary<string, object?> item,
+        CancellationToken cancellationToken = default) =>
+        RecordingStatusCallAsync(
+            (client, headers, deadline, token) => client.AppendRecordingEventAsync(
+                new AppendRecordingEventRequest { Json = JsonSerializer.Serialize(item) },
+                headers,
+                deadline,
+                token).ResponseAsync,
+            cancellationToken);
+
+    public Task<StudyRecordingStatus> AppendRecordingSampleAsync(
+        StudyRecordingSample sample,
+        CancellationToken cancellationToken = default)
+    {
+        var json = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["at_ms"] = sample.AtMilliseconds,
+            ["gaze_x"] = sample.GazeX,
+            ["gaze_y"] = sample.GazeY,
+            ["confidence"] = sample.Confidence,
+            ["face_present"] = sample.FacePresent,
+            ["attention_state"] = sample.AttentionState,
+            ["distraction_probability"] = sample.DistractionProbability,
+            ["task"] = sample.Task,
+            ["subtask"] = sample.Subtask
+        });
+        return RecordingStatusCallAsync(
+            (client, headers, deadline, token) => client.AppendRecordingSampleAsync(
+                new AppendRecordingSampleRequest { Json = json },
+                headers,
+                deadline,
+                token).ResponseAsync,
+            cancellationToken);
+    }
+
+    public Task<StudyRecordingStatus> GetRecordingStatusAsync(
+        CancellationToken cancellationToken = default) =>
+        RecordingStatusCallAsync(
+            (client, headers, deadline, token) => client.GetRecordingStatusAsync(
+                new GetRecordingStatusRequest(), headers, deadline, token).ResponseAsync,
+            cancellationToken);
+
+    public Task<StudyRecordingStatus> StopRecordingAsync(
+        CancellationToken cancellationToken = default) =>
+        RecordingStatusCallAsync(
+            (client, headers, deadline, token) => client.StopRecordingAsync(
+                new StopRecordingRequest(), headers, deadline, token).ResponseAsync,
+            cancellationToken,
+            TimeSpan.FromSeconds(10));
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.WaitAsync(cancellationToken);
@@ -429,6 +519,36 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
         return prediction.ReasonCodes.Contains("worker_unavailable", StringComparer.Ordinal)
             ? prediction
             : prediction with { ReasonCodes = [.. prediction.ReasonCodes, "worker_unavailable"] };
+    }
+
+    private async Task<StudyRecordingStatus> RecordingStatusCallAsync(
+        Func<InferenceWorker.InferenceWorkerClient, Metadata, DateTime, CancellationToken, Task<RecordingStatusReply>> call,
+        CancellationToken cancellationToken,
+        TimeSpan? deadline = null)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new StudyRecordingStatus("", StudyRecordingState.Failed, 0, 0, 0, false, "worker_unavailable");
+        }
+        var reply = await call(
+            _client,
+            _headers,
+            DateTime.UtcNow + (deadline ?? _options.RpcDeadline),
+            cancellationToken);
+        return new StudyRecordingStatus(
+            reply.TrialId,
+            reply.Status switch
+            {
+                "recording" => StudyRecordingState.Recording,
+                "complete" => StudyRecordingState.Complete,
+                "failed" => StudyRecordingState.Failed,
+                _ => StudyRecordingState.Idle
+            },
+            checked((int)reply.FrameCount),
+            checked((int)reply.DroppedFrames),
+            reply.ElapsedSeconds,
+            reply.VideoUsable,
+            string.IsNullOrWhiteSpace(reply.ErrorCode) ? null : reply.ErrorCode);
     }
 
     private async Task StopResourcesAsync()

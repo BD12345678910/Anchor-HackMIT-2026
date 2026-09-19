@@ -60,6 +60,8 @@ public sealed class SessionOrchestrator
     public bool IsRunning => CurrentSession is not null;
     public string CapabilityStatus => _inference.IsAvailable ? "Multimodal" : "Deterministic";
     public double InterventionThreshold => _policy.CurrentThreshold;
+    public bool InterventionsEnabled { get; set; } = true;
+    public event Action<InterventionDecision, ContextCapsule?>? InterventionPresented;
 
     public async Task<GoalSession> StartAsync(
         string title,
@@ -135,7 +137,9 @@ public sealed class SessionOrchestrator
             return prediction;
         }
 
-        var decision = _policy.Decide(prediction, UserPreferences.Default);
+        var decision = _policy.Decide(
+            prediction,
+            UserPreferences.Default with { InterventionsEnabled = InterventionsEnabled });
         if (decision.Kind != InterventionKind.None)
         {
             ContextCapsule? capsule = null;
@@ -150,6 +154,7 @@ public sealed class SessionOrchestrator
             }
 
             await _presenter.PresentAsync(decision, capsule, cancellationToken);
+            InterventionPresented?.Invoke(decision, capsule);
             await _store.AppendAsync(
                 DerivedEvent.Create(
                     CurrentSession.Id,
@@ -217,6 +222,7 @@ public sealed class SessionOrchestrator
                         _progress = null;
                         LastPrediction = null;
                         Progress = null;
+                        InterventionsEnabled = true;
                         _currentSubtask = string.Empty;
                         _plannedNextAction = string.Empty;
                     }

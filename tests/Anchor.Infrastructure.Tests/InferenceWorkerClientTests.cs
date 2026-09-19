@@ -120,6 +120,41 @@ public sealed class InferenceWorkerClientTests
         Assert.False(sample.FacePresent);
     }
 
+    [Fact]
+    public async Task Real_worker_records_screen_sample_and_event_then_finalizes_video()
+    {
+        var root = FindRepositoryRoot();
+        var output = Path.Combine(Path.GetTempPath(), $"anchor-recording-{Guid.NewGuid():N}");
+        var options = new InferenceWorkerOptions(
+            PythonExecutable: Path.Combine(root, ".venv", "Scripts", "python.exe"),
+            WorkerDirectory: Path.Combine(root, "src", "Anchor.Worker"),
+            StartupTimeout: TimeSpan.FromSeconds(5),
+            RpcDeadline: TimeSpan.FromSeconds(3),
+            MaxRestarts: 1);
+        await using var client = new InferenceWorkerClient(options);
+
+        Assert.True(await client.StartAsync(), client.LastError);
+        var started = await client.StartRecordingAsync(output, TrialMode.AnchorEnabled, "TEST01", fps: 10);
+        var duplicate = await client.StartRecordingAsync(output, TrialMode.AnchorEnabled, "TEST01", fps: 10);
+        Assert.NotNull(started.Manifest);
+        Assert.Equal("recording_already_active", duplicate.Error);
+        await client.AppendRecordingSampleAsync(new StudyRecordingSample(
+            50, 0.5, 0.5, 0.9, true, "focused", 0.1, "Test task", "Test step"));
+        await client.AppendRecordingEventAsync(new Dictionary<string, object?>
+        {
+            ["type"] = "intervention",
+            ["at_ms"] = 100,
+            ["presented"] = true
+        });
+        await Task.Delay(350);
+        var stopped = await client.StopRecordingAsync();
+
+        Assert.Equal(StudyRecordingState.Complete, stopped.State);
+        Assert.True(stopped.VideoUsable);
+        Assert.True(File.Exists(started.Manifest!.VideoPath));
+        Assert.True(File.Exists(started.Manifest.SummaryPath));
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

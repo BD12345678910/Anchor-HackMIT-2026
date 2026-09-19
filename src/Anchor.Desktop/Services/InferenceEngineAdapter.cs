@@ -65,6 +65,31 @@ public sealed class InferenceEngineAdapter : IInferenceEngine, IAsyncDisposable
     public Task<GazeStatus> StopGazeAsync(CancellationToken cancellationToken = default) =>
         _client.StopGazeAsync(cancellationToken);
 
+    public Task<(StudyRecordingManifest? Manifest, string? Error)> StartRecordingAsync(
+        string outputDirectory,
+        TrialMode trialMode,
+        string participantCode,
+        int displayIndex = 1,
+        int fps = 15,
+        CancellationToken cancellationToken = default) =>
+        _client.StartRecordingAsync(outputDirectory, trialMode, participantCode, displayIndex, fps, cancellationToken);
+
+    public Task<StudyRecordingStatus> AppendRecordingEventAsync(
+        IReadOnlyDictionary<string, object?> item,
+        CancellationToken cancellationToken = default) =>
+        _client.AppendRecordingEventAsync(item, cancellationToken);
+
+    public Task<StudyRecordingStatus> AppendRecordingSampleAsync(
+        StudyRecordingSample sample,
+        CancellationToken cancellationToken = default) =>
+        _client.AppendRecordingSampleAsync(sample, cancellationToken);
+
+    public Task<StudyRecordingStatus> GetRecordingStatusAsync(CancellationToken cancellationToken = default) =>
+        _client.GetRecordingStatusAsync(cancellationToken);
+
+    public Task<StudyRecordingStatus> StopRecordingAsync(CancellationToken cancellationToken = default) =>
+        _client.StopRecordingAsync(cancellationToken);
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await _client.StopAsync(cancellationToken);

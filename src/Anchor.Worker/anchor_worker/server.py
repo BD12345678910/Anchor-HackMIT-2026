@@ -13,13 +13,14 @@ from .gaze import GazeConfiguration
 from .gaze_controller import GazeController
 from .health import detect_capabilities
 from .inference import AttentionInference
+from .recording import MssScreenCapture, StudyRecorder
 from .generated import anchor_pb2
 
 sys.modules.setdefault("anchor_pb2", anchor_pb2)
 from .generated import anchor_pb2_grpc  # noqa: E402
 
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 class AuthenticationError(PermissionError):
@@ -57,12 +58,15 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
         token: str,
         stop_event: asyncio.Event,
         gaze_controller: GazeController | None = None,
+        recording_factory: Callable[..., StudyRecorder] | None = None,
     ) -> None:
         self._token = token
         self._stop_event = stop_event
         self._inference = AttentionInference()
         self._capabilities = worker_capabilities()
         self._gaze = gaze_controller or GazeController()
+        self._recording_factory = recording_factory or StudyRecorder
+        self._recorder: StudyRecorder | None = None
 
     async def _authenticate(self, context: grpc.aio.ServicerContext) -> bool:
         try:
@@ -226,10 +230,76 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
         self._gaze.stop()
         return anchor_pb2.GazeStatusReply(running=False)
 
+    async def StartRecording(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.RecordingManifestReply()
+        if self._recorder is not None and self._recorder.status.status == "recording":
+            return anchor_pb2.RecordingManifestReply(accepted=False, error="recording_already_active")
+        try:
+            capture = MssScreenCapture(max(1, request.display_index or 1))
+            self._recorder = self._recording_factory(
+                fps=max(1, min(60, request.fps or 15)),
+                capture=capture,
+            )
+            manifest = self._recorder.start(
+                request.output_directory,
+                trial_mode=request.trial_mode,
+                participant_code=request.participant_code,
+            )
+            return anchor_pb2.RecordingManifestReply(
+                accepted=True,
+                trial_id=manifest.trial_id,
+                trial_mode=manifest.trial_mode,
+                video_path=str(manifest.video_path),
+                events_path=str(manifest.events_path),
+                samples_path=str(manifest.samples_path),
+                summary_path=str(manifest.summary_path),
+                manifest_path=str(manifest.manifest_path),
+            )
+        except Exception as error:
+            self._recorder = None
+            return anchor_pb2.RecordingManifestReply(accepted=False, error=str(error))
+
+    async def AppendRecordingEvent(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.RecordingStatusReply()
+        if self._recorder is None:
+            return anchor_pb2.RecordingStatusReply(status="idle", error_code="recording_not_active")
+        try:
+            self._recorder.append_event(self._parse_recording_json(request.json))
+        except (ValueError, RuntimeError, json.JSONDecodeError) as error:
+            return self._status_message(error_code=str(error))
+        return self._status_message()
+
+    async def AppendRecordingSample(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.RecordingStatusReply()
+        if self._recorder is None:
+            return anchor_pb2.RecordingStatusReply(status="idle", error_code="recording_not_active")
+        try:
+            self._recorder.append_sample(self._parse_recording_json(request.json))
+        except (ValueError, RuntimeError, json.JSONDecodeError) as error:
+            return self._status_message(error_code=str(error))
+        return self._status_message()
+
+    async def GetRecordingStatus(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.RecordingStatusReply()
+        return self._status_message()
+
+    async def StopRecording(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.RecordingStatusReply()
+        if self._recorder is None:
+            return anchor_pb2.RecordingStatusReply(status="idle")
+        return self._status_message(self._recorder.stop())
+
     async def Shutdown(self, request, context):
         if not await self._authenticate(context):
             return anchor_pb2.ShutdownReply(accepted=False)
         self._gaze.stop()
+        if self._recorder is not None:
+            self._recorder.stop()
         self._stop_event.set()
         return anchor_pb2.ShutdownReply(accepted=True)
 
@@ -244,6 +314,29 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
             smoothing=configuration.smoothing,
             sensitivity=configuration.sensitivity,
             min_confidence=configuration.min_confidence,
+        )
+
+    @staticmethod
+    def _parse_recording_json(value: str) -> dict[str, object]:
+        if len(value.encode("utf-8")) > 65_536:
+            raise ValueError("recording payload too large")
+        item = json.loads(value)
+        if not isinstance(item, dict):
+            raise ValueError("recording payload must be an object")
+        return item
+
+    def _status_message(self, status=None, error_code: str = ""):
+        if self._recorder is None:
+            return anchor_pb2.RecordingStatusReply(status="idle", error_code=error_code)
+        current = status or self._recorder.status
+        return anchor_pb2.RecordingStatusReply(
+            trial_id=current.trial_id,
+            status=current.status,
+            frame_count=current.frame_count,
+            dropped_frames=current.dropped_frames,
+            elapsed_seconds=current.elapsed_seconds,
+            video_usable=current.video_usable,
+            error_code=error_code or current.error_code or "",
         )
 
 
