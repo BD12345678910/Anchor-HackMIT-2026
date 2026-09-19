@@ -211,6 +211,7 @@
                             <TextBlock Text="Focus toolkit" FontSize="19" FontWeight="SemiBold" />
                             <ToggleSwitch Header="Dynamic image blur" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.BlurImagesEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Hide future text" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.HideFutureTextEnabled, Mode=TwoWay}" />
+                            <ToggleSwitch Header="Pause distracting animations" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.SuppressAnimationsEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Visual focus filter" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.VisualFilterEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Gaze spotlight" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.GazeSpotlightEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Low-relevance window firewall" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.WindowFirewallEnabled, Mode=TwoWay}" />

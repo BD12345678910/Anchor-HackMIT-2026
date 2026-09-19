@@ -12,3 +12,6 @@ textarea { resize: vertical; }
 .actions { display: flex; align-items: center; gap: 14px; }
 button { border: 0; border-radius: 10px; padding: 11px 18px; color: white; background: #587aef; font-weight: 650; cursor: pointer; }
 #status { color: #9fb2ff; }
+.connected { color: #75d6a0; }
+.disconnected { color: #ffb6a8; }
+#enabledOrigins { margin: 0; padding-left: 20px; color: #cbd4e7; }

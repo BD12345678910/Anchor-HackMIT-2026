@@ -16,8 +16,15 @@
       <label for="threshold">Image threshold <output id="thresholdValue"></output></label>
       <input id="threshold" type="range" min="0.3" max="0.9" step="0.05">
       <label class="toggle"><input id="futureTextMask" type="checkbox"> Hide future paragraphs while reading</label>
+      <label class="toggle"><input id="suppressAnimations" type="checkbox"> Pause distracting page animations</label>
       <label for="lookahead">Visible paragraphs ahead</label>
       <input id="lookahead" type="number" min="0" max="8">
+    </section>
+    <section>
+      <strong>Desktop connection</strong>
+      <span id="bridgeStatus" role="status">Checking…</span>
+      <strong>Enabled sites</strong>
+      <ul id="enabledOrigins"><li>No sites enabled yet. Click the Anchor browser icon on a page to enable it.</li></ul>
     </section>
     <section>
       <label for="deniedOrigins">Never run on these origins <span>(one per line)</span></label>

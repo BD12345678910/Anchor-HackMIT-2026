@@ -1,6 +1,7 @@
 using Anchor.Core.Services;
 using Anchor.Infrastructure.Persistence;
 using Anchor.Infrastructure.DeepSeek;
+using Anchor.Infrastructure.Browser;
 using Anchor.Infrastructure.Windows;
 using Anchor.Infrastructure.Worker;
 
@@ -18,6 +19,7 @@ public sealed class AppServices : IAsyncDisposable
         SessionOrchestrator orchestrator,
         SafetyWatchdog watchdog,
         DeepSeekSettingsStore deepSeekSettings,
+        NativeBridgeServer browserBridge,
         HttpClient deepSeekHttpClient)
     {
         Store = store;
@@ -27,6 +29,7 @@ public sealed class AppServices : IAsyncDisposable
         Orchestrator = orchestrator;
         Watchdog = watchdog;
         DeepSeekSettings = deepSeekSettings;
+        BrowserBridge = browserBridge;
         _deepSeekHttpClient = deepSeekHttpClient;
     }
 
@@ -37,6 +40,7 @@ public sealed class AppServices : IAsyncDisposable
     public SessionOrchestrator Orchestrator { get; }
     public SafetyWatchdog Watchdog { get; }
     public DeepSeekSettingsStore DeepSeekSettings { get; }
+    public NativeBridgeServer BrowserBridge { get; }
 
     public static AppServices Create()
     {
@@ -48,7 +52,9 @@ public sealed class AppServices : IAsyncDisposable
         var worker = new InferenceWorkerClient(InferenceWorkerOptions.CreateDefault(repositoryRoot));
         var inference = new InferenceEngineAdapter(worker);
         var sensors = new WindowsSensorCoordinator();
-        var overlays = new OverlayPresenter();
+        var browserBridge = new NativeBridgeServer(Path.Combine(appData, "bridge.json"));
+        browserBridge.Start();
+        var overlays = new OverlayPresenter(browserBridge);
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);
         var watchdog = new SafetyWatchdog(overlays, TimeSpan.FromSeconds(30));
         var deepSeekSettings = new DeepSeekSettingsStore(Path.Combine(appData, "settings.json"));
@@ -61,6 +67,7 @@ public sealed class AppServices : IAsyncDisposable
             orchestrator,
             watchdog,
             deepSeekSettings,
+            browserBridge,
             deepSeekHttpClient);
     }
 
@@ -88,6 +95,7 @@ public sealed class AppServices : IAsyncDisposable
         Sensors.Dispose();
         await Inference.DisposeAsync();
         await Store.DisposeAsync();
+        await BrowserBridge.DisposeAsync();
         _deepSeekHttpClient.Dispose();
     }
 

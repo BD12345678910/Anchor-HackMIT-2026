@@ -55,6 +55,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool VisualFilterEnabled { get; set; } = true;
     [ObservableProperty] public partial bool BlurImagesEnabled { get; set; } = true;
     [ObservableProperty] public partial bool HideFutureTextEnabled { get; set; } = true;
+    [ObservableProperty] public partial bool SuppressAnimationsEnabled { get; set; }
     [ObservableProperty] public partial bool AudioShieldEnabled { get; set; }
     [ObservableProperty] public partial bool PointerGuardEnabled { get; set; }
     [ObservableProperty] public partial bool IsPlanReady { get; set; }
@@ -86,6 +87,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool TreatCurrentWindowAsRelevant { get; set; }
 
     partial void OnVisualFilterEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
+    partial void OnBlurImagesEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
+    partial void OnHideFutureTextEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
+    partial void OnSuppressAnimationsEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
     partial void OnPointerGuardEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
     partial void OnGazeSpotlightEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
     partial void OnWindowFirewallEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
@@ -744,7 +748,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 VisualFilterEnabled,
                 WindowFirewallEnabled,
                 PointerGuardEnabled,
-                _lastSecureWindow));
+                _lastSecureWindow,
+                BlurImagesEnabled,
+                HideFutureTextEnabled,
+                SuppressAnimationsEnabled));
             ToolkitStatus = string.Join(" · ", results
                 .Where(static result => result.Status != "Off")
                 .Select(static result => $"{result.Feature}: {result.Status}"));

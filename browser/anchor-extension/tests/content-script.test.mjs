@@ -8,8 +8,11 @@ const {
   isProtectedPage,
   shouldExcludeElement,
   applyImageFiltering,
+  clearImageFilters,
   maskFutureText,
   clearInterventions,
+  clearFutureTextMasks,
+  applyAnimationSuppression,
   createReadingTracker,
 } = require("../content-script.js");
 
@@ -31,7 +34,7 @@ class FakeElement {
     this.naturalHeight = options.naturalHeight ?? this.height;
     this.complete = true;
     this.dataset = {};
-    this.style = { filter: options.filter ?? "", opacity: "", transition: "" };
+    this.style = { filter: options.filter ?? "", opacity: "", transition: "", backgroundImage: options.backgroundImage ?? "", animationPlayState: options.animationPlayState ?? "" };
     this.classList = new FakeClassList();
     this.textContent = options.text ?? "";
     this.parentElement = options.parentElement ?? null;
@@ -48,9 +51,11 @@ class FakeElement {
 }
 
 class FakeRoot {
-  constructor(images = [], paragraphs = []) { this.images = images; this.paragraphs = paragraphs; }
+  constructor(images = [], paragraphs = [], backgrounds = [], animated = []) { this.images = images; this.paragraphs = paragraphs; this.backgrounds = backgrounds; this.animated = animated; }
   querySelectorAll(selector) {
     if (selector === "img") return this.images;
+    if (selector.includes("background-image")) return this.backgrounds;
+    if (selector.includes("data-anchor-animated")) return this.animated;
     if (selector.includes("p")) return this.paragraphs;
     if (selector.includes("anchor-")) {
       return [...this.images, ...this.paragraphs].filter((element) =>
@@ -128,4 +133,45 @@ test("reading tracker detects a large skip and repeated phrase dwell", () => {
   assert.equal(events[0].type, "reading-skip");
   assert.equal(events[1].type, "stuck-phrase");
   assert.equal(events[1].phrase, "hard phrase");
+});
+
+test("CSS background images can be filtered and animation suppression is reversible", () => {
+  const background = new FakeElement("div", { width: 900, height: 620, backgroundImage: "url(hero.jpg)", rect: { top: 20, bottom: 640, width: 900, height: 620 } });
+  const animated = new FakeElement("div", { animationPlayState: "running" });
+  animated.dataset.anchorAnimated = "true";
+  const root = new FakeRoot([], [], [background], [animated]);
+
+  assert.equal(applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.5, relevance: () => 0 }), 1);
+  assert.equal(applyAnimationSuppression(root, true), 1);
+  assert.match(background.style.filter, /blur/);
+  assert.equal(animated.style.animationPlayState, "paused");
+  applyAnimationSuppression(root, false);
+  assert.equal(animated.style.animationPlayState, "running");
+});
+
+test("clearing future text masks preserves unrelated image blur", () => {
+  const image = new FakeElement("img", { width: 900, height: 620, rect: { top: 0, bottom: 620, width: 900, height: 620 } });
+  const paragraph = new FakeElement("p");
+  const root = new FakeRoot([image], [paragraph]);
+  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0 });
+  maskFutureText(root, -1, { lookahead: 0 });
+
+  clearFutureTextMasks(root);
+
+  assert.equal(paragraph.classList.contains("anchor-future-mask"), false);
+  assert.equal(image.dataset.anchorFiltered, "true");
+  assert.match(image.style.filter, /blur/);
+});
+
+test("clearing image filters preserves future text masks", () => {
+  const image = new FakeElement("img", { width: 900, height: 620, filter: "sepia(1)", rect: { top: 0, bottom: 620, width: 900, height: 620 } });
+  const paragraph = new FakeElement("p");
+  const root = new FakeRoot([image], [paragraph]);
+  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0 });
+  maskFutureText(root, -1, { lookahead: 0 });
+
+  clearImageFilters(root);
+
+  assert.equal(image.style.filter, "sepia(1)");
+  assert.equal(paragraph.classList.contains("anchor-future-mask"), true);
 });

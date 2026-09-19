@@ -42,9 +42,9 @@
     return Boolean(element.closest?.("form, video, audio, [contenteditable='true'], [role='dialog']"));
   }
 
-  function inferAnimation(image) {
-    const source = String(image.currentSrc ?? image.src ?? "").toLowerCase();
-    return source.endsWith(".gif") || image.dataset?.animated === "true";
+  function inferAnimation(element) {
+    const source = String(element.currentSrc ?? element.src ?? element.style?.backgroundImage ?? "").toLowerCase();
+    return source.includes(".gif") || element.dataset?.animated === "true" || element.dataset?.anchorAnimated === "true";
   }
 
   function applyImageFiltering(root, options = {}) {
@@ -53,7 +53,11 @@
     const threshold = clamp(options.threshold ?? 0.62);
     const relevance = options.relevance ?? (() => 0.5);
     let changed = 0;
-    for (const image of root.querySelectorAll("img")) {
+    const candidates = [...new Set([
+      ...root.querySelectorAll("img"),
+      ...root.querySelectorAll("[style*='background-image']"),
+    ])];
+    for (const image of candidates) {
       if (shouldExcludeElement(image)) continue;
       const rectangle = image.getBoundingClientRect();
       if (rectangle.width <= 0 || rectangle.height <= 0) continue;
@@ -98,6 +102,49 @@
     return masked;
   }
 
+  function clearFutureTextMasks(root) {
+    let changed = 0;
+    for (const paragraph of root.querySelectorAll(`.${MASK_CLASS}`)) {
+      paragraph.classList.remove(MASK_CLASS);
+      changed += 1;
+    }
+    return changed;
+  }
+
+  function clearImageFilters(root) {
+    let changed = 0;
+    for (const element of root.querySelectorAll(".anchor-image-filtered, [data-anchor-filtered='true']")) {
+      if (element.dataset?.[FILTERED_ATTRIBUTE] !== "true") continue;
+      element.style.filter = element.dataset.anchorOriginalFilter ?? "";
+      element.style.transition = "";
+      delete element.dataset.anchorOriginalFilter;
+      delete element.dataset[FILTERED_ATTRIBUTE];
+      delete element.dataset.anchorDistractionScore;
+      element.classList.remove("anchor-image-filtered");
+      changed += 1;
+    }
+    return changed;
+  }
+
+  function applyAnimationSuppression(root, enabled) {
+    let changed = 0;
+    for (const element of root.querySelectorAll("[data-anchor-animated='true'], [style*='animation']")) {
+      if (shouldExcludeElement(element)) continue;
+      if (enabled && element.dataset.anchorAnimationSuppressed !== "true") {
+        element.dataset.anchorOriginalAnimationPlayState = element.style.animationPlayState ?? "";
+        element.dataset.anchorAnimationSuppressed = "true";
+        element.style.animationPlayState = "paused";
+        changed += 1;
+      } else if (!enabled && element.dataset.anchorAnimationSuppressed === "true") {
+        element.style.animationPlayState = element.dataset.anchorOriginalAnimationPlayState ?? "";
+        delete element.dataset.anchorOriginalAnimationPlayState;
+        delete element.dataset.anchorAnimationSuppressed;
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
   function clearInterventions(root) {
     for (const element of root.querySelectorAll(".anchor-image-filtered, .anchor-future-mask, .anchor-recovery-anchor, [data-anchor-filtered='true']")) {
       if (element.dataset?.[FILTERED_ATTRIBUTE] === "true") {
@@ -109,6 +156,7 @@
       }
       element.classList.remove("anchor-image-filtered", MASK_CLASS, "anchor-recovery-anchor");
     }
+    applyAnimationSuppression(root, false);
   }
 
   function createReadingTracker(emit, options = {}) {
@@ -167,14 +215,19 @@
     if (isProtectedPage(location.href, signals)) return;
     injectStyles();
     const tracker = createReadingTracker((event) => chrome.runtime.sendMessage({ source: "anchor-content", event }));
-    let settings = { imageBlur: true, threshold: 0.62, futureTextMask: false, lookahead: 1 };
+    let settings = { imageBlur: true, threshold: 0.62, futureTextMask: false, lookahead: 1, suppressAnimations: false };
     let currentParagraph = 0;
 
     const apply = () => {
       if (settings.imageBlur) applyImageFiltering(document, { threshold: settings.threshold });
       if (settings.futureTextMask) maskFutureText(document, currentParagraph, settings);
+      applyAnimationSuppression(document, settings.suppressAnimations);
     };
-    const observer = new MutationObserver(() => apply());
+    let mutationTimer = null;
+    const observer = new MutationObserver(() => {
+      clearTimeout(mutationTimer);
+      mutationTimer = setTimeout(apply, 80);
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
     addEventListener("scroll", () => {
       const maximum = Math.max(1, document.documentElement.scrollHeight - innerHeight);
@@ -191,11 +244,14 @@
 
     chrome.runtime.onMessage.addListener((message, _sender, respond) => {
       if (message?.command === "setVisualFilter") {
-        settings = { ...settings, imageBlur: true, threshold: message.threshold ?? settings.threshold };
-        apply();
+        settings = { ...settings, imageBlur: message.enabled !== false, threshold: message.threshold ?? settings.threshold };
+        if (settings.imageBlur) apply(); else clearImageFilters(document);
       } else if (message?.command === "setFutureTextMask") {
         settings = { ...settings, futureTextMask: Boolean(message.enabled), lookahead: message.lookahead ?? settings.lookahead };
-        if (settings.futureTextMask) apply(); else clearInterventions(document);
+        if (settings.futureTextMask) apply(); else clearFutureTextMasks(document);
+      } else if (message?.command === "setAnimationSuppression") {
+        settings = { ...settings, suppressAnimations: Boolean(message.enabled) };
+        applyAnimationSuppression(document, settings.suppressAnimations);
       } else if (message?.command === "clearInterventions") {
         clearInterventions(document);
       } else if (message?.command === "showRecoveryAnchor") {
@@ -204,9 +260,9 @@
         anchor?.classList.add("anchor-recovery-anchor");
         anchor?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       }
-      respond?.({ ok: true, tracker: tracker.snapshot() });
+      respond?.({ ok: true, tracker: tracker.snapshot(), capabilities: ["imageBlur", "futureTextMask", "animationSuppression", "recoveryAnchor"] });
     });
-    chrome.storage.sync.get(["imageBlur", "threshold", "futureTextMask", "lookahead"], (saved) => {
+    chrome.storage.sync.get(["imageBlur", "threshold", "futureTextMask", "lookahead", "suppressAnimations"], (saved) => {
       settings = { ...settings, ...saved };
       apply();
     });
@@ -221,7 +277,10 @@
     isProtectedPage,
     shouldExcludeElement,
     applyImageFiltering,
+    clearImageFilters,
     maskFutureText,
+    clearFutureTextMasks,
+    applyAnimationSuppression,
     clearInterventions,
     createReadingTracker,
     boot,

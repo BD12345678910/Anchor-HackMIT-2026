@@ -1,6 +1,7 @@
 using Anchor.Core.Models;
 using Anchor.Core.Services;
 using Anchor.Infrastructure.Windows;
+using Anchor.Infrastructure.Browser;
 using Anchor_Desktop.Overlays;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
@@ -10,6 +11,7 @@ namespace Anchor_Desktop.Services;
 
 public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInterventionController
 {
+    private readonly NativeBridgeServer? _browserBridge;
     private readonly PointerConfinement _pointer = new();
     private GoalBeaconWindow? _beacon;
     private VisualFilterWindow? _filter;
@@ -19,6 +21,11 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     private WindowFirewallWindow? _firewall;
     private ToolkitState _toolkitState = ToolkitState.Off;
     private (double X, double Y, DateTimeOffset At)? _lastSpotlight;
+
+    public OverlayPresenter(NativeBridgeServer? browserBridge = null)
+    {
+        _browserBridge = browserBridge;
+    }
 
     public string TaskTitle { get; set; } = "Return to your task";
     public string CurrentSubtask { get; set; } = "Choose the smallest next action";
@@ -44,6 +51,18 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         await App.DispatcherQueue.EnqueueAsync(() =>
         {
             _toolkitState = state;
+            _browserBridge?.UpdateSnapshot("toolkitState", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                type = "toolkitState",
+                imageBlur = state.BrowserImageBlur,
+                futureTextMask = state.BrowserFutureTextMask,
+                suppressAnimations = state.BrowserAnimationSuppression,
+                gazeSpotlight = state.GazeSpotlight,
+                peripheralDim = state.PeripheralDim,
+                windowFirewall = state.WindowFirewall,
+                pointerGuard = state.PointerGuard,
+                secureWindow = state.SecureWindow
+            }));
             EnableVisualFilter = state.PeripheralDim;
             EnablePointerGuard = state.PointerGuard;
             if (state.SecureWindow)
