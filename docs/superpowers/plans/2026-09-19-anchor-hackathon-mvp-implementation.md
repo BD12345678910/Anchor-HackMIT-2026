@@ -413,23 +413,23 @@ Commit: `feat: add browser focus adapter`
 - `run-demo.ps1 -Scenario <name>` feeds deterministic events to the same orchestrator used by live sensors.
 - `build.ps1` restores, tests, builds x64, runs browser tests, runs Python tests, and publishes the unpackaged self-contained app.
 
-- [ ] **Step 1: Add deterministic replay scenarios**
+- [x] **Step 1: Add deterministic replay scenarios**
 
 Cover normal focus, app-switch drift, reading skip, stuck phrase, sudden interruption, manual distraction, worker failure, and recovery. Every scenario includes expected states and intervention outputs.
 
-- [ ] **Step 2: Add an end-to-end replay test**
+- [x] **Step 2: Add an end-to-end replay test**
 
 Run each JSONL file through the orchestrator and assert the final state, intervention sequence, context capsule, and metrics.
 
-- [ ] **Step 3: Write build and demo scripts**
+- [x] **Step 3: Write build and demo scripts**
 
 Pin the local .NET SDK path, set telemetry opt-out, restore locked dependencies, run all tests, publish `win-x64` self-contained output, and print the exact output folder. The demo script starts the worker when available and otherwise labels deterministic mode.
 
-- [ ] **Step 4: Write user and privacy documentation**
+- [x] **Step 4: Write user and privacy documentation**
 
 Document setup, controls, all sensors, permissions, degraded modes, data deletion, emergency escape, extension loading, demo flow, known limitations, and the distinction between an assistive hackathon prototype and a medical device.
 
-- [ ] **Step 5: Run the full completion audit**
+- [x] **Step 5: Run the full completion audit**
 
 Run:
 
@@ -442,6 +442,6 @@ dotnet test Anchor.slnx -c Release -p:Platform=x64
 
 Then launch the published app and execute all three replay scenarios plus the manual recovery button. Verify overlays clear with `Esc`, the worker can be killed without ending the session, and local history deletion removes all stored events.
 
-- [ ] **Step 6: Commit the verified MVP**
+- [x] **Step 6: Commit the verified MVP**
 
 Commit: `feat: complete Anchor hackathon MVP`

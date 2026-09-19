@@ -7,6 +7,7 @@ public sealed class AttentionStateMachine
     private readonly TemporalEvidenceBuffer _evidence = new();
     private int _highDistractionWindows;
     private int _focusedWindows;
+    private int _stuckWindows;
 
     private AttentionStateMachine()
     {
@@ -43,6 +44,24 @@ public sealed class AttentionStateMachine
         {
             reasons.Add("worker_unavailable");
         }
+
+        if (window.AppRelevance >= 0.55
+            && window.ScrollReversalCount >= 8
+            && window.IdleSeconds < 8)
+        {
+            _stuckWindows++;
+            _highDistractionWindows = 0;
+            _focusedWindows = 0;
+            reasons.Add("stuck_phrase");
+            State = _stuckWindows >= 2 ? AttentionState.Stuck : AttentionState.Drifting;
+            return AttentionPrediction.Create(
+                State,
+                _stuckWindows >= 2 ? 0.84 : 0.62,
+                temporal.FiveSecond,
+                reasons);
+        }
+
+        _stuckWindows = 0;
 
         if (rawEvidence >= 0.72)
         {
@@ -125,5 +144,6 @@ public sealed class AttentionStateMachine
     {
         _highDistractionWindows = 0;
         _focusedWindows = 0;
+        _stuckWindows = 0;
     }
 }

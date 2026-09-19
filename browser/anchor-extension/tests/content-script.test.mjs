@@ -52,7 +52,13 @@ class FakeRoot {
   querySelectorAll(selector) {
     if (selector === "img") return this.images;
     if (selector.includes("p")) return this.paragraphs;
-    if (selector.includes("anchor-")) return [...this.images, ...this.paragraphs];
+    if (selector.includes("anchor-")) {
+      return [...this.images, ...this.paragraphs].filter((element) =>
+        (selector.includes(".anchor-image-filtered") && element.classList.contains("anchor-image-filtered"))
+        || (selector.includes(".anchor-future-mask") && element.classList.contains("anchor-future-mask"))
+        || (selector.includes(".anchor-recovery-anchor") && element.classList.contains("anchor-recovery-anchor"))
+        || (selector.includes("data-anchor-filtered") && element.dataset.anchorFiltered === "true"));
+    }
     return [];
   }
 }
@@ -104,9 +110,11 @@ test("cleanup restores filters and is idempotent", () => {
   applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0 });
   maskFutureText(root, -1, { lookahead: 0 });
   clearInterventions(root);
+  paragraph.classList.add("anchor-recovery-anchor");
   clearInterventions(root);
   assert.equal(image.style.filter, "sepia(1)");
   assert.equal(paragraph.classList.contains("anchor-future-mask"), false);
+  assert.equal(paragraph.classList.contains("anchor-recovery-anchor"), false);
 });
 
 test("reading tracker detects a large skip and repeated phrase dwell", () => {

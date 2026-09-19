@@ -146,6 +146,24 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         AddTimeline("Safety release", "Emergency control cleared interventions");
     }
 
+    [RelayCommand]
+    private async Task DeleteLocalHistoryAsync()
+    {
+        if (IsRunning)
+        {
+            StatusMessage = "Stop the current session before deleting local history.";
+            return;
+        }
+
+        await _services.Store.InitializeAsync();
+        await _services.Store.DeleteAllAsync();
+        Timeline.Clear();
+        FocusedDuration = "0m 00s";
+        RecoveryDuration = "0m 00s";
+        InterruptionCount = 0;
+        StatusMessage = "All locally stored session events were deleted.";
+    }
+
     public async ValueTask DisposeAsync()
     {
         _timer.Stop();

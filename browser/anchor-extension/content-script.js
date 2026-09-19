@@ -99,7 +99,7 @@
   }
 
   function clearInterventions(root) {
-    for (const element of root.querySelectorAll(".anchor-image-filtered, .anchor-future-mask, [data-anchor-filtered='true']")) {
+    for (const element of root.querySelectorAll(".anchor-image-filtered, .anchor-future-mask, .anchor-recovery-anchor, [data-anchor-filtered='true']")) {
       if (element.dataset?.[FILTERED_ATTRIBUTE] === "true") {
         element.style.filter = element.dataset.anchorOriginalFilter ?? "";
         element.style.transition = "";

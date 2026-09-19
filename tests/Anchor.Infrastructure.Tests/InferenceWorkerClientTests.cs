@@ -55,6 +55,34 @@ public sealed class InferenceWorkerClientTests
         Assert.Contains("manual_report", prediction.ReasonCodes);
     }
 
+    [Fact]
+    public async Task Real_worker_maps_stuck_phrase_reason_to_stuck_state()
+    {
+        var root = FindRepositoryRoot();
+        var options = new InferenceWorkerOptions(
+            PythonExecutable: Path.Combine(root, ".venv", "Scripts", "python.exe"),
+            WorkerDirectory: Path.Combine(root, "src", "Anchor.Worker"),
+            StartupTimeout: TimeSpan.FromSeconds(5),
+            RpcDeadline: TimeSpan.FromSeconds(2),
+            MaxRestarts: 1);
+        await using var client = new InferenceWorkerClient(options);
+
+        Assert.True(await client.StartAsync(), client.LastError);
+        var window = SensorWindow.Create(
+            keyCount: 0,
+            mouseDistance: 30,
+            idleSeconds: 2,
+            appRelevance: 0.9,
+            scrollReversalCount: 9,
+            isWorkerAvailable: true);
+        var first = await client.PredictAsync(window);
+        var prediction = await client.PredictAsync(window);
+
+        Assert.DoesNotContain("stuck_phrase", first.ReasonCodes);
+        Assert.Equal(AttentionState.Stuck, prediction.State);
+        Assert.Contains("stuck_phrase", prediction.ReasonCodes);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -21,6 +21,7 @@ class AttentionInference:
             raise ValueError("alpha must be in (0, 1]")
         self._alpha = alpha
         self._smoothed: float | None = None
+        self._stuck_windows = 0
 
     def predict(self, features: NormalizedFeatures) -> InferenceResult:
         started = time.perf_counter()
@@ -44,6 +45,14 @@ class AttentionInference:
         linear += min(features.scroll_reversal_count, 10) * 0.13
         if features.scroll_reversal_count >= 4:
             reasons.append("scroll_loop")
+        appears_stuck = (
+            features.app_relevance >= 0.55
+            and features.scroll_reversal_count >= 8
+            and features.idle_seconds < 8
+        )
+        self._stuck_windows = self._stuck_windows + 1 if appears_stuck else 0
+        if self._stuck_windows >= 2:
+            reasons.append("stuck_phrase")
 
         linear += min(features.mouse_distance, 1_000) * 0.0012
         if features.mouse_distance >= 250:

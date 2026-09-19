@@ -94,6 +94,37 @@ public sealed class SessionOrchestratorTests
         Assert.Equal(0, fixture.Sensors.StartCalls);
     }
 
+    [Fact]
+    public async Task Secure_window_immediately_clears_existing_interventions()
+    {
+        var fixture = new Fixture();
+        await fixture.Orchestrator.StartAsync("Read a paper");
+
+        await fixture.Orchestrator.ProcessAsync(SensorWindow.Create(
+            keyCount: 0,
+            mouseDistance: 0,
+            idleSeconds: 0,
+            appRelevance: 0.5,
+            isSecureWindow: true));
+
+        Assert.Equal(1, fixture.Presenter.ClearCalls);
+        Assert.Empty(fixture.Presenter.Presentations);
+    }
+
+    [Fact]
+    public async Task Stop_releases_sensors_and_worker_even_when_presenter_cleanup_fails()
+    {
+        var fixture = new Fixture();
+        await fixture.Orchestrator.StartAsync("Read a paper");
+        fixture.Presenter.ThrowOnClear = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Orchestrator.StopAsync());
+
+        Assert.False(fixture.Orchestrator.IsRunning);
+        Assert.Equal(1, fixture.Sensors.StopCalls);
+        Assert.Equal(1, fixture.Inference.StopCalls);
+    }
+
     private sealed class Fixture
     {
         public Fixture(bool workerAvailable = true)
@@ -176,6 +207,7 @@ public sealed class SessionOrchestratorTests
     {
         public List<(InterventionDecision Decision, ContextCapsule? Capsule)> Presentations { get; } = [];
         public int ClearCalls { get; private set; }
+        public bool ThrowOnClear { get; set; }
 
         public Task PresentAsync(
             InterventionDecision decision,
@@ -191,6 +223,10 @@ public sealed class SessionOrchestratorTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             ClearCalls++;
+            if (ThrowOnClear)
+            {
+                throw new InvalidOperationException("Presenter cleanup failed.");
+            }
             return Task.CompletedTask;
         }
     }

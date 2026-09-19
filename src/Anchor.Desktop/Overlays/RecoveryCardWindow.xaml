@@ -14,9 +14,13 @@
                     <TextBlock x:Name="NextActionText" Foreground="#AFC1FF" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-                <Button Content="Not now" Click="Dismiss_Click" />
-                <Button Content="Return to task" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
+            <TextBlock Text="Context was preserved locally a moment ago." FontSize="12" Foreground="#9EABC8" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Dismiss" Click="Dismiss_Click" />
+                <Button Content="Break down" Click="BreakDown_Click" />
+                <Button Content="Recap" Click="Recap_Click" />
+                <Button Content="Reopen" Click="Reopen_Click" />
+                <Button Content="Resume" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
             </StackPanel>
         </StackPanel>
     </Grid>

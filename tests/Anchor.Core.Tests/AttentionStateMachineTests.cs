@@ -71,6 +71,25 @@ public sealed class AttentionStateMachineTests
         Assert.Contains("worker_unavailable", prediction.ReasonCodes);
     }
 
+    [Fact]
+    public void Repeated_scroll_loops_on_relevant_text_enter_stuck_state()
+    {
+        var machine = AttentionStateMachine.CreateDefault();
+        var loop = SensorWindow.Create(
+            keyCount: 0,
+            mouseDistance: 30,
+            idleSeconds: 2,
+            appRelevance: 0.9,
+            scrollReversalCount: 9,
+            isWorkerAvailable: false);
+
+        Assert.Equal(AttentionState.Drifting, machine.Update(loop).State);
+        var prediction = machine.Update(loop);
+
+        Assert.Equal(AttentionState.Stuck, prediction.State);
+        Assert.Contains("stuck_phrase", prediction.ReasonCodes);
+    }
+
     private static SensorWindow FocusedWindow() => SensorWindow.Create(
         keyCount: 8,
         mouseDistance: 30,

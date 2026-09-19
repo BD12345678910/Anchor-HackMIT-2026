@@ -45,3 +45,19 @@ def test_manual_report_bypasses_inference_thresholds():
     assert result.distraction_probability == 1
     assert result.confidence == 1
     assert "manual_report" in result.reason_codes
+
+
+def test_repeated_scroll_loop_on_relevant_content_reports_stuck_phrase():
+    model = AttentionInference(alpha=1)
+    features = normalize_features(
+        {
+            "app_relevance": 0.9,
+            "scroll_reversal_count": 9,
+            "idle_seconds": 2,
+        }
+    )
+    first = model.predict(features)
+    result = model.predict(features)
+
+    assert "stuck_phrase" not in first.reason_codes
+    assert "stuck_phrase" in result.reason_codes

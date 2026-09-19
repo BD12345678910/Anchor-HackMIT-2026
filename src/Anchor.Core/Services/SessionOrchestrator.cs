@@ -120,6 +120,12 @@ public sealed class SessionOrchestrator
         await _store.AppendAsync(attentionEvent, cancellationToken);
         Progress = _progress!.Apply(attentionEvent);
 
+        if (prediction.ReasonCodes.Contains("secure_window", StringComparer.Ordinal))
+        {
+            await _presenter.ClearAsync(cancellationToken);
+            return prediction;
+        }
+
         var decision = _policy.Decide(prediction, UserPreferences.Default);
         if (decision.Kind != InterventionKind.None)
         {
@@ -176,18 +182,41 @@ public sealed class SessionOrchestrator
         }
 
         var session = CurrentSession;
-        await _presenter.ClearAsync(cancellationToken);
-        await _sensors.StopAsync(cancellationToken);
-        await _inference.StopAsync(cancellationToken);
-        await _store.AppendAsync(
-            DerivedEvent.Create(session.Id, _clock(), "session", "stopped"),
-            cancellationToken);
-
-        CurrentSession = null;
-        _capsules = null;
-        _progress = null;
-        LastPrediction = null;
-        Progress = null;
+        try
+        {
+            await _presenter.ClearAsync(cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                await _sensors.StopAsync(cancellationToken);
+            }
+            finally
+            {
+                try
+                {
+                    await _inference.StopAsync(cancellationToken);
+                }
+                finally
+                {
+                    try
+                    {
+                        await _store.AppendAsync(
+                            DerivedEvent.Create(session.Id, _clock(), "session", "stopped"),
+                            cancellationToken);
+                    }
+                    finally
+                    {
+                        CurrentSession = null;
+                        _capsules = null;
+                        _progress = null;
+                        LastPrediction = null;
+                        Progress = null;
+                    }
+                }
+            }
+        }
     }
 
     private void EnsureRunning()

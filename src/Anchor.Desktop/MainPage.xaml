@@ -117,6 +117,7 @@
                             <TextBlock Text="• No screenshot stream leaves this device" TextWrapping="Wrap" />
                             <TextBlock Text="• Password and secure windows suppress interventions" TextWrapping="Wrap" />
                             <TextBlock Text="• All restrictions fail open" TextWrapping="Wrap" />
+                            <Button Content="Delete local history" HorizontalAlignment="Left" Command="{x:Bind ViewModel.DeleteLocalHistoryCommand}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

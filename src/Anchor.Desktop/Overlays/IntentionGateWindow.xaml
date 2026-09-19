@@ -11,7 +11,9 @@
                 <TextBlock x:Name="TaskText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
             </Border>
             <TextBlock Text="Anchor pauses the detour; it never closes your apps." Foreground="#9EABC8" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Disable gates" Click="Disable_Click" />
+                <Button Content="Park for later" Click="Park_Click" />
                 <Button Content="Continue anyway" Click="Continue_Click" />
                 <Button Content="Return to task" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
             </StackPanel>

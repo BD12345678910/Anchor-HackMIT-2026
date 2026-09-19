@@ -28,6 +28,11 @@ coverage/
 # Generated and previous rendering intermediates
 tmp/
 output/
+!output/
+output/*
+!output/pdf/
+output/pdf/*
+!output/pdf/Anchor_HackMIT_Project_Brief.pdf
 
 # IDE and OS
 .vs/

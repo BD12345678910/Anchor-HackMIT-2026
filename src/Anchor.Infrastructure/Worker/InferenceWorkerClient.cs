@@ -136,12 +136,14 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
                 DateTime.UtcNow + _options.RpcDeadline,
                 cancellationToken);
             var reply = await call.ResponseAsync;
-            var state = reply.DistractionProbability switch
-            {
-                >= 0.72 => AttentionState.Distracted,
-                >= 0.45 => AttentionState.Drifting,
-                _ => AttentionState.Focused
-            };
+            var state = reply.ReasonCodes.Contains("stuck_phrase", StringComparer.Ordinal)
+                ? AttentionState.Stuck
+                : reply.DistractionProbability switch
+                {
+                    >= 0.72 => AttentionState.Distracted,
+                    >= 0.45 => AttentionState.Drifting,
+                    _ => AttentionState.Focused
+                };
             return AttentionPrediction.Create(
                 state,
                 reply.Confidence,

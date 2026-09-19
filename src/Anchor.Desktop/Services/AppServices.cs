@@ -42,7 +42,7 @@ public sealed class AppServices : IAsyncDisposable
         var sensors = new WindowsSensorCoordinator();
         var overlays = new OverlayPresenter();
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);
-        var watchdog = new SafetyWatchdog(overlays, TimeSpan.FromSeconds(5));
+        var watchdog = new SafetyWatchdog(overlays, TimeSpan.FromSeconds(30));
         return new AppServices(store, inference, sensors, overlays, orchestrator, watchdog);
     }
 
