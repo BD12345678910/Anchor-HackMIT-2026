@@ -303,23 +303,23 @@ Commit: `feat: add local inference worker protocol`
 - Sensors publish sanitized `DerivedEvent` values through a bounded `Channel<DerivedEvent>`.
 - `SafetyWatchdog.ReleaseAll()` clears overlays, hooks, and `ClipCursor` synchronously.
 
-- [ ] **Step 1: Write aggregation and watchdog tests using fake native adapters**
+- [x] **Step 1: Write aggregation and watchdog tests using fake native adapters**
 
 Cover rapid app switches, idle periods, mouse distance without coordinates, keyboard category counts without keys, channel overflow, secure-window activation, focus loss, `Esc`, and watchdog expiry.
 
-- [ ] **Step 2: Implement foreground and idle sensors**
+- [x] **Step 2: Implement foreground and idle sensors**
 
 Use `SetWinEventHook`, `GetForegroundWindow`, process identity, window title redaction, and `GetLastInputInfo`. Never poll faster than needed and marshal callbacks onto a dedicated service queue.
 
-- [ ] **Step 3: Implement aggregate input sensing**
+- [x] **Step 3: Implement aggregate input sensing**
 
 Use Raw Input to count key-down categories and accumulate pointer distance/velocity. Discard raw key codes immediately after categorization and never expose typed content outside the sensor.
 
-- [ ] **Step 4: Implement opt-in pointer confinement and fail-open watchdog**
+- [x] **Step 4: Implement opt-in pointer confinement and fail-open watchdog**
 
 Wrap `ClipCursor`; release on `Esc`, emergency hotkey, target focus loss, process exit, secure-window activation, shutdown, or a 30-second watchdog timeout.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Commit: `feat: add privacy-safe Windows sensing and watchdog`
 
