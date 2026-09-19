@@ -11,7 +11,6 @@ public sealed partial class RecoveryCardWindow : Window
     public RecoveryCardWindow()
     {
         InitializeComponent();
-        OverlayWindowHelper.Center(this, 720, 380);
     }
 
     public event EventHandler? ReturnedToTask;

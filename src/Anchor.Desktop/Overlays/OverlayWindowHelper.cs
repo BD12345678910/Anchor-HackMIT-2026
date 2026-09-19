@@ -18,28 +18,24 @@ internal static class OverlayWindowHelper
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
         var appWindow = AppWindow.GetFromWindowId(id);
-        if (appWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.IsAlwaysOnTop = true;
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
-            presenter.IsMinimizable = false;
-            presenter.SetBorderAndTitleBar(false, false);
-        }
-
         var workArea = GetActiveWorkArea(handle);
-        if (fullScreen)
-        {
-            appWindow.MoveAndResize(workArea);
-        }
-        else
-        {
-            appWindow.MoveAndResize(new RectInt32(
+        var bounds = fullScreen
+            ? workArea
+            : new RectInt32(
                 Math.Max(workArea.X + 16, workArea.X + workArea.Width - width - 24),
                 workArea.Y + 24,
                 width,
-                height));
-        }
+                height);
+        ConfigureBounds(window, bounds, clickThrough);
+    }
+
+    public static void ConfigureBounds(Window window, RectInt32 bounds, bool clickThrough)
+    {
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
+        var appWindow = AppWindow.GetFromWindowId(id);
+        ConfigurePresenter(appWindow, hideBorder: true);
+        appWindow.MoveAndResize(bounds);
 
         if (clickThrough)
         {
@@ -53,13 +49,7 @@ internal static class OverlayWindowHelper
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
         var appWindow = AppWindow.GetFromWindowId(id);
-        if (appWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.IsAlwaysOnTop = true;
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
-            presenter.IsMinimizable = false;
-        }
+        ConfigurePresenter(appWindow, hideBorder: false);
 
         var workArea = GetActiveWorkArea(handle);
         appWindow.MoveAndResize(new RectInt32(
@@ -69,7 +59,7 @@ internal static class OverlayWindowHelper
             height));
     }
 
-    private static RectInt32 GetActiveWorkArea(IntPtr fallbackWindow)
+    internal static RectInt32 GetActiveWorkArea(IntPtr fallbackWindow)
     {
         var foreground = GetForegroundWindow();
         var monitor = MonitorFromWindow(
@@ -86,6 +76,22 @@ internal static class OverlayWindowHelper
         }
 
         return new RectInt32(0, 0, GetSystemMetrics(0), GetSystemMetrics(1));
+    }
+
+    private static void ConfigurePresenter(AppWindow appWindow, bool hideBorder)
+    {
+        if (appWindow.Presenter is not OverlappedPresenter presenter)
+        {
+            return;
+        }
+        presenter.IsAlwaysOnTop = true;
+        presenter.IsResizable = false;
+        presenter.IsMaximizable = false;
+        presenter.IsMinimizable = false;
+        if (hideBorder)
+        {
+            presenter.SetBorderAndTitleBar(false, false);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

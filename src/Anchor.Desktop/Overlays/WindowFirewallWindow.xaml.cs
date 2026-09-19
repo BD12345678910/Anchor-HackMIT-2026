@@ -2,10 +2,11 @@ using Microsoft.UI.Xaml;
 
 namespace Anchor_Desktop.Overlays;
 
-public sealed partial class VisualFilterWindow : Window
+public sealed partial class WindowFirewallWindow : Window
 {
-    public VisualFilterWindow()
+    public WindowFirewallWindow()
     {
         InitializeComponent();
     }
 }
+

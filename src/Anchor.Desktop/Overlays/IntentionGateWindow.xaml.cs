@@ -7,7 +7,6 @@ public sealed partial class IntentionGateWindow : Window
     public IntentionGateWindow()
     {
         InitializeComponent();
-        OverlayWindowHelper.Center(this, 540, 320);
         Activated += (_, args) =>
         {
             if (args.WindowActivationState == WindowActivationState.Deactivated)

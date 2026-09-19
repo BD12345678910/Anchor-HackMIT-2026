@@ -26,6 +26,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private int _calibrationIndex;
     private AttentionFusion _attentionFusion = new();
     private bool _sessionGazeActive;
+    private bool _lastSecureWindow;
     private TaskSessionPlanner? _taskPlanner;
     private string? _plannedGoal;
 
@@ -64,6 +65,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string DeepSeekApiKey { get; set; } = string.Empty;
     [ObservableProperty] public partial string DeepSeekStatus { get; set; } = "Not configured";
     [ObservableProperty] public partial bool ReducedMotion { get; set; }
+    [ObservableProperty] public partial bool GazeSpotlightEnabled { get; set; }
+    [ObservableProperty] public partial bool WindowFirewallEnabled { get; set; }
+    [ObservableProperty] public partial string ToolkitStatus { get; set; } = "Desktop tools ready";
     [ObservableProperty] public partial CameraDevice? SelectedCamera { get; set; }
     [ObservableProperty] public partial bool GazeMirror { get; set; } = true;
     [ObservableProperty] public partial double GazeRotationDegrees { get; set; }
@@ -81,8 +85,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string CalibrationProgressLabel { get; set; } = "0 of 9";
     [ObservableProperty] public partial bool TreatCurrentWindowAsRelevant { get; set; }
 
-    partial void OnVisualFilterEnabledChanged(bool value) => _services.Overlays.EnableVisualFilter = value;
-    partial void OnPointerGuardEnabledChanged(bool value) => _services.Overlays.EnablePointerGuard = value;
+    partial void OnVisualFilterEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
+    partial void OnPointerGuardEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
+    partial void OnGazeSpotlightEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
+    partial void OnWindowFirewallEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
     partial void OnReducedMotionChanged(bool value) => _services.Overlays.ReducedMotion = value;
 
     partial void OnTaskTitleChanged(string value)
@@ -111,6 +117,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         {
             DeepSeekStatus = $"Settings unavailable: {error.Message}";
         }
+        await ApplyToolkitStateAsync();
     }
 
     [RelayCommand]
@@ -280,6 +287,18 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         StatusMessage = ReducedMotion
             ? "Reduced-motion static beacon emphasis shown."
             : "One-shot beacon shake shown.";
+    }
+
+    [RelayCommand]
+    private async Task PreviewToolkitAsync(string feature)
+    {
+        if (!Enum.TryParse<ToolkitFeature>(feature, ignoreCase: true, out var parsed))
+        {
+            ToolkitStatus = "Unknown toolkit preview.";
+            return;
+        }
+        var result = await _services.Overlays.PreviewAsync(parsed);
+        ToolkitStatus = $"{parsed}: {result.Status}";
     }
 
     [RelayCommand]
@@ -532,9 +551,15 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 $"{TaskTitle} {CurrentSubtask}",
                 _services.Inference.IsAvailable,
                 now);
+            _lastSecureWindow = raw.IsSecureWindow;
+            await ApplyToolkitStateAsync();
             var gaze = _sessionGazeActive
                 ? await _services.Inference.ReadGazeAsync()
                 : null;
+            if (gaze is not null)
+            {
+                await _services.Overlays.UpdateGazeAsync(gaze);
+            }
             var context = _services.Sensors.CreateTaskContext(
                 TaskTitle,
                 CurrentSubtask,
@@ -708,6 +733,30 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         var bitmap = new BitmapImage();
         await bitmap.SetSourceAsync(stream);
         return bitmap;
+    }
+
+    private async Task ApplyToolkitStateAsync()
+    {
+        try
+        {
+            var results = await _services.Overlays.SetToolkitStateAsync(new ToolkitState(
+                GazeSpotlightEnabled,
+                VisualFilterEnabled,
+                WindowFirewallEnabled,
+                PointerGuardEnabled,
+                _lastSecureWindow));
+            ToolkitStatus = string.Join(" · ", results
+                .Where(static result => result.Status != "Off")
+                .Select(static result => $"{result.Feature}: {result.Status}"));
+            if (string.IsNullOrWhiteSpace(ToolkitStatus))
+            {
+                ToolkitStatus = "Desktop tools off";
+            }
+        }
+        catch (Exception error)
+        {
+            ToolkitStatus = $"Desktop toolkit unavailable: {error.Message}";
+        }
     }
 
     [DllImport("user32.dll")]

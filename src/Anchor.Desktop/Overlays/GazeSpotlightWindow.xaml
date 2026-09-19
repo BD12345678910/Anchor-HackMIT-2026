@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Anchor_Desktop.Overlays.GazeSpotlightWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Canvas x:Name="Layer" Background="Transparent">
+        <Border x:Name="TopShade" Background="#A8070B12" />
+        <Border x:Name="BottomShade" Background="#A8070B12" />
+        <Border x:Name="LeftShade" Background="#A8070B12" />
+        <Border x:Name="RightShade" Background="#A8070B12" />
+        <Ellipse x:Name="FocusRing" Stroke="#D9AFC1FF" StrokeThickness="3" Fill="Transparent" />
+    </Canvas>
+</Window>
+
