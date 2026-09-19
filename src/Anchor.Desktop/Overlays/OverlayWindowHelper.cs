@@ -43,6 +43,7 @@ internal static class OverlayWindowHelper
         {
             var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
             SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style | WsExTransparent | WsExToolWindow | WsExNoActivate));
+            appWindow.Show(activateWindow: false);
         }
     }
 

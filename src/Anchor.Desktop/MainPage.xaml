@@ -241,11 +241,15 @@
                                         <TextBlock Text="Check-ins (always on during a session)" FontWeight="SemiBold" />
                                         <TextBlock Text="Beacon pulse when drifting, intention gate when distracted, context reminder when you come back." Style="{StaticResource Hint}" />
                                     </StackPanel>
-                                    <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
-                                        <Button Content="Preview beacon" Command="{x:Bind ViewModel.PreviewBeaconCommand}" />
-                                        <Button Content="Preview intention gate" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="IntentionGate" />
-                                        <Button Content="Preview reminder" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="ContextReminder" />
-                                        <Button Content="Test shake" Command="{x:Bind ViewModel.TestBeaconShakeCommand}" />
+                                    <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Spacing="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Preview beacon" Command="{x:Bind ViewModel.PreviewBeaconCommand}" />
+                                            <Button Content="Test shake" Command="{x:Bind ViewModel.TestBeaconShakeCommand}" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Preview intention gate" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="IntentionGate" />
+                                            <Button Content="Preview reminder" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="ContextReminder" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

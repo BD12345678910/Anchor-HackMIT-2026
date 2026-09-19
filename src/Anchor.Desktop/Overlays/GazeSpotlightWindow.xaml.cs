@@ -49,7 +49,6 @@ public sealed partial class GazeSpotlightWindow : Window
 
     private static void Place(Window window, int x, int y, int width, int height)
     {
-        window.Activate();
         OverlayWindowHelper.ConfigureBounds(
             window,
             new RectInt32(x, y, Math.Max(1, width), Math.Max(1, height)),

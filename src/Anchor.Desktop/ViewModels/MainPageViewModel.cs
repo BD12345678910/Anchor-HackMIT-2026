@@ -35,6 +35,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private TaskSessionPlanner? _taskPlanner;
     private string? _plannedGoal;
     private string? _lastEvidenceTitle;
+    private bool _loadingPreferences;
     private readonly HashSet<string> _dismissedSuggestions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userRelevantTargets = new(StringComparer.OrdinalIgnoreCase);
 
@@ -45,6 +46,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _gazeTimer.Tick += GazeTimer_Tick;
         _recordingTimer.Tick += RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant += Overlays_CurrentWindowMarkedRelevant;
+        _services.Overlays.OverlaysCleared += Overlays_Cleared;
         _services.Overlays.BreakdownProvider = BreakDownRecoveryStepAsync;
     }
 
@@ -113,14 +115,88 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string LatestRecordingFiles { get; set; } = "No recording created yet";
     [ObservableProperty] public partial string ComparisonReport { get; set; } = "Choose Compare recordings after creating one baseline and one Anchor-enabled trial.";
 
-    partial void OnVisualFilterEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnBlurImagesEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnHideFutureTextEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnSuppressAnimationsEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnPointerGuardEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnGazeSpotlightEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnWindowFirewallEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
-    partial void OnReducedMotionChanged(bool value) => _services.Overlays.ReducedMotion = value;
+    partial void OnVisualFilterEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnBlurImagesEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnHideFutureTextEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnSuppressAnimationsEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnPointerGuardEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnGazeSpotlightEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnWindowFirewallEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnAudioShieldEnabledChanged(bool value) => _ = SavePreferencesAsync();
+
+    partial void OnReducedMotionChanged(bool value)
+    {
+        _services.Overlays.ReducedMotion = value;
+        _ = SavePreferencesAsync();
+    }
+
+    private void ToolPreferenceChanged()
+    {
+        _ = ApplyToolkitStateAsync();
+        _ = SavePreferencesAsync();
+    }
+
+    private async Task SavePreferencesAsync()
+    {
+        if (_loadingPreferences)
+        {
+            return;
+        }
+
+        try
+        {
+            await _services.Preferences.SaveAsync(new ToolPreferences(
+                VisualFilterEnabled,
+                BlurImagesEnabled,
+                HideFutureTextEnabled,
+                SuppressAnimationsEnabled,
+                AudioShieldEnabled,
+                PointerGuardEnabled,
+                GazeSpotlightEnabled,
+                WindowFirewallEnabled,
+                ReducedMotion));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _services.LogError("save preferences", error);
+        }
+    }
+
+    private async Task LoadPreferencesAsync()
+    {
+        ToolPreferences? saved;
+        try
+        {
+            saved = await _services.Preferences.LoadAsync();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _services.LogError("load preferences", error);
+            return;
+        }
+        if (saved is null)
+        {
+            return;
+        }
+
+        _loadingPreferences = true;
+        try
+        {
+            VisualFilterEnabled = saved.VisualFilter;
+            BlurImagesEnabled = saved.BlurImages;
+            HideFutureTextEnabled = saved.HideFutureText;
+            SuppressAnimationsEnabled = saved.SuppressAnimations;
+            AudioShieldEnabled = saved.AudioShield;
+            PointerGuardEnabled = saved.PointerGuard;
+            GazeSpotlightEnabled = saved.GazeSpotlight;
+            WindowFirewallEnabled = saved.WindowFirewall;
+            ReducedMotion = saved.ReducedMotion;
+        }
+        finally
+        {
+            _loadingPreferences = false;
+        }
+    }
 
     partial void OnTaskTitleChanged(string value)
     {
@@ -134,6 +210,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
+        await LoadPreferencesAsync();
         try
         {
             var settings = await _services.DeepSeekSettings.LoadAsync();
@@ -823,6 +900,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _gazeTimer.Tick -= GazeTimer_Tick;
         _recordingTimer.Tick -= RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant -= Overlays_CurrentWindowMarkedRelevant;
+        _services.Overlays.OverlaysCleared -= Overlays_Cleared;
         _services.Overlays.BreakdownProvider = null;
         if (IsGazeRunning)
         {
@@ -913,6 +991,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception error)
         {
+            _services.LogError("sensing tick", error);
             StatusMessage = $"Sensing recovered from an error: {error.Message}";
         }
         finally
@@ -1050,6 +1129,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _userRelevantTargets.Add(ContextIdentity(context));
         StatusMessage = "This window is now treated as needed for the current task.";
         AddTimeline("Relevance corrected", context.WindowTitle ?? context.ProcessName);
+    }
+
+    private async void Overlays_Cleared(object? sender, EventArgs e)
+    {
+        if (ToolkitStatus.Contains("Previewing", StringComparison.Ordinal))
+        {
+            await ApplyToolkitStateAsync();
+        }
     }
 
     private async Task<(string Step, string Source)> BreakDownRecoveryStepAsync(CancellationToken cancellationToken)

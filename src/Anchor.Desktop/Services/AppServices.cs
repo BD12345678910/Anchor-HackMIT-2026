@@ -21,8 +21,11 @@ public sealed class AppServices : IAsyncDisposable
         DeepSeekSettingsStore deepSeekSettings,
         NativeBridgeServer browserBridge,
         StudyRecordingService recording,
-        HttpClient deepSeekHttpClient)
+        HttpClient deepSeekHttpClient,
+        string dataDirectory)
     {
+        DataDirectory = dataDirectory;
+        Preferences = new ToolPreferencesStore(Path.Combine(dataDirectory, "preferences.json"));
         Store = store;
         Inference = inference;
         Sensors = sensors;
@@ -44,6 +47,25 @@ public sealed class AppServices : IAsyncDisposable
     public DeepSeekSettingsStore DeepSeekSettings { get; }
     public NativeBridgeServer BrowserBridge { get; }
     public StudyRecordingService Recording { get; }
+    public string DataDirectory { get; }
+    public ToolPreferencesStore Preferences { get; }
+
+    public void LogError(string context, Exception error)
+    {
+        try
+        {
+            Directory.CreateDirectory(DataDirectory);
+            File.AppendAllText(
+                Path.Combine(DataDirectory, "errors.log"),
+                $"{DateTimeOffset.Now:O} [{context}] {error}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
 
     public static AppServices Create()
     {
@@ -77,7 +99,8 @@ public sealed class AppServices : IAsyncDisposable
             deepSeekSettings,
             browserBridge,
             recording,
-            deepSeekHttpClient);
+            deepSeekHttpClient,
+            appData);
     }
 
     public async Task<TaskSessionPlanner> CreateTaskPlannerAsync(

@@ -45,6 +45,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         || _spotlight is not null
         || _firewall is not null
         || _pointer.IsConfined;
+    public bool HasAnyOverlay => HasRestrictiveOverlay || _recovery is not null || _beacon is not null;
+
+    /// <summary>Raised after every overlay has been closed, so bound status text can stop claiming one is showing.</summary>
+    public event EventHandler? OverlaysCleared;
     public ToolkitState CurrentToolkitState => _toolkitState;
 
     public async Task<IReadOnlyList<ToolkitApplyResult>> SetToolkitStateAsync(
@@ -160,13 +164,16 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     ShowGate("pointer guard preview");
                     break;
             }
-            if (feature is ToolkitFeature.GazeSpotlight or ToolkitFeature.PeripheralDim or ToolkitFeature.WindowFirewall)
+            var timed = feature is ToolkitFeature.GazeSpotlight or ToolkitFeature.PeripheralDim or ToolkitFeature.WindowFirewall;
+            if (timed)
             {
                 SchedulePreviewClear();
             }
             result ??= new ToolkitApplyResult(
                 feature,
-                $"Previewing for {PreviewDuration.TotalSeconds:0} s · Esc clears it now",
+                timed
+                    ? $"Previewing for {PreviewDuration.TotalSeconds:0} s · Esc clears it now"
+                    : "Previewing · use the card's buttons or Esc to close it",
                 true);
         });
         return result!;
@@ -237,6 +244,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         Close(ref _spotlight);
         Close(ref _firewall);
         _lastSpotlight = null;
+        if (!HasAnyOverlay)
+        {
+            OverlaysCleared?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public Task UpdateGazeAsync(
@@ -315,7 +326,6 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     {
         _beacon ??= new GoalBeaconWindow();
         _beacon.SetGoal(TaskTitle, CurrentSubtask, ProgressLabel, pulse, ReducedMotion);
-        _beacon.Activate();
         OverlayWindowHelper.Configure(_beacon, 500, 118, clickThrough: true);
     }
 
@@ -347,6 +357,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         Close(ref _spotlight);
         Close(ref _firewall);
         _lastSpotlight = null;
+        OverlaysCleared?.Invoke(this, EventArgs.Empty);
     }
 
     public void ReleaseHooks()
@@ -356,7 +367,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
     private void ShowFilter()
     {
-        if (_filter is null)
+        var filter = _filter;
+        if (filter is null)
         {
             var window = new VisualFilterWindow();
             window.Closed += (_, _) =>
@@ -366,11 +378,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     _filter = null;
                 }
             };
-            _filter = window;
+            _filter = filter = window;
         }
-        _filter.Activate();
-        OverlayWindowHelper.Configure(_filter, 0, 0, clickThrough: true, fullScreen: true);
-        OverlayWindowHelper.MakeTranslucent(_filter, 0x70);
+        OverlayWindowHelper.Configure(filter, 0, 0, clickThrough: true, fullScreen: true);
+        OverlayWindowHelper.MakeTranslucent(filter, 0x70);
     }
 
     private void ShowRecovery(ContextCapsule? capsule, string reason)
@@ -481,6 +492,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 App.Services.Watchdog.Signal(SafetyReleaseReason.FocusLost);
             }
         };
+        if (EnableVisualFilter)
+        {
+            ShowFilter();
+        }
         _gate.Activate();
         OverlayWindowHelper.Center(_gate, 780, 430);
         if (EnablePointerGuard)
@@ -492,10 +507,6 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 Math.Max(0, (height - 420) / 2),
                 Math.Min(width, (width + 620) / 2),
                 Math.Min(height, (height + 420) / 2)));
-        }
-        if (EnableVisualFilter)
-        {
-            ShowFilter();
         }
     }
 
@@ -553,12 +564,12 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             };
             _firewall = window;
         }
-        _firewall.Activate();
+        var firewall = _firewall;
         OverlayWindowHelper.ConfigureBounds(
-            _firewall,
+            firewall,
             new RectInt32(clipped.X, clipped.Y, clipped.Width, clipped.Height),
             clickThrough: true);
-        OverlayWindowHelper.MakeTranslucent(_firewall, 0xB4);
+        OverlayWindowHelper.MakeTranslucent(firewall, 0xB4);
         return true;
     }
 
