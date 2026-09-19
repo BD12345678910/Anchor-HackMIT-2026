@@ -1,0 +1,38 @@
+# Local toolchains and execution state
+.tools/
+.superpowers/
+
+# Build output
+**/bin/
+**/obj/
+artifacts/
+publish/
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# JavaScript
+node_modules/
+coverage/
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Generated and previous rendering intermediates
+tmp/
+output/
+
+# IDE and OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
