@@ -29,19 +29,19 @@ The rebuild treats those as integration defects, not threshold-tuning problems.
 
 Anchor behaves like Grammarly rather than a conventional full-screen productivity application:
 
-1. Opening Anchor shows a settings and session dashboard.
-2. Starting a session minimizes the dashboard to a stationary notification-area icon.
+1. Opening Anchor shows the **Settings page**, the full foreground window used for setup, session controls, diagnostics, recordings, and review.
+2. Starting a session can hide the Settings page while Anchor remains available through a stationary notification-area icon.
 3. A small, stationary Goal Beacon remains visible without stealing focus.
 4. The beacon normally shows the overall goal, current subtask, and progress count.
 5. Sensors run in the background and produce explainable evidence, never a medical or diagnostic score.
 6. Interventions appear only when needed and always provide a quick escape.
-7. Clicking the tray icon restores the dashboard. Closing the dashboard keeps an active session running; **Exit Anchor** stops all sensors and workers.
+7. Clicking the tray icon restores the Settings page. Closing the Settings page keeps an active session running; **Exit Anchor** stops all sensors and workers.
 
 ## 4. Release architecture
 
 ```mermaid
 flowchart LR
-    UI[WinUI dashboard and tray] --> TASK[Task-plan and progress engine]
+    UI[WinUI Settings page and tray] --> TASK[Task-plan and progress engine]
     UI --> TOOL[Immediate focus-tool controls]
     DS[DeepSeek API] <--> LLM[Private LLM gateway]
     LLM --> TASK
@@ -175,7 +175,7 @@ The state machine exposes `Focused`, `Drifting`, `Distracted`, `Recovering`, `St
 
 ## 8. Goal Beacon
 
-The beacon is a DPI-aware, always-on-top, no-activation window positioned inside the active monitor's working area. It remains visible when the dashboard is hidden and is recreated if Explorer or the display layout changes.
+The beacon is a DPI-aware, always-on-top, no-activation window positioned inside the active monitor's working area. It remains visible when the Settings page is hidden and is recreated if Explorer or the display layout changes.
 
 Normal state:
 
@@ -223,13 +223,13 @@ The context reminder is an always-on-top interactive card that visibly contains:
 - **Next smallest action:** LLM plan or adapter-derived continuation;
 - **Resume**, **Recap**, **Break down**, **Reopen**, **Take a break**, and **Dismiss**.
 
-The card is centered on the active monitor, never behind the dashboard, and remains until the user acts. If no safe anchor exists, it states that the context is estimated. **Break down** requests a smaller DeepSeek step when available and otherwise uses the existing task plan.
+The card is centered on the active monitor, never behind the Settings page, and remains until the user acts. If no safe anchor exists, it states that the context is estimated. **Break down** requests a smaller DeepSeek step when available and otherwise uses the existing task plan.
 
 ## 11. Study recorder and A/B comparison
 
 ### 11.1 Trial setup
 
-The dashboard provides **Start study recording**. The user chooses:
+The Settings page provides **Start study recording**. The user chooses:
 
 - **Anchor enabled** or **Baseline / no interventions**;
 - a non-identifying participant code;
@@ -261,7 +261,9 @@ Raw webcam frames are included only in the MP4 when explicitly selected and are 
 
 ### 11.3 Comparison
 
-The dashboard can compare one Anchor-enabled trial with one baseline trial. It reports metric differences without making clinical claims:
+The Settings page contains a visible **Compare recordings** button. It opens a trial selector, requires one Anchor-enabled recording and one baseline recording, validates that their files are readable, and then renders the comparison report in the Settings page. The button remains available whenever the foreground Settings page is open; no comparison UI appears while Anchor is operating only in the background.
+
+The comparison reports metric differences without making clinical claims:
 
 - on-screen/task-region gaze proportion;
 - gaze-away duration;
@@ -302,12 +304,12 @@ release/Anchor-win-x64/
 └── licenses/
 ```
 
-`Anchor.exe` automatically locates and starts the bundled worker using a random loopback authentication token. A Python installation is not required. Worker startup, health, camera capability, bridge connection, and DeepSeek availability appear separately in diagnostics. Failure of any optional subsystem leaves the dashboard usable and identifies the degraded mode. The hackathon build is an unsigned portable release unless the team supplies a Windows code-signing certificate.
+`Anchor.exe` automatically locates and starts the bundled worker using a random loopback authentication token. A Python installation is not required. Worker startup, health, camera capability, bridge connection, and DeepSeek availability appear separately in Settings diagnostics. Failure of any optional subsystem leaves the Settings page usable and identifies the degraded mode. The hackathon build is an unsigned portable release unless the team supplies a Windows code-signing certificate.
 
 ## 14. Safety and failure handling
 
 - `Esc` releases all restrictive overlays and pointer constraints.
-- `Ctrl+Shift+A` restores the dashboard.
+- `Ctrl+Shift+A` restores the Settings page.
 - `Ctrl+Shift+F12` opens manual recovery.
 - Camera permission denial leaves a fully usable camera-off mode.
 - DeepSeek failure never blocks starting or stopping a session.
@@ -321,7 +323,7 @@ release/Anchor-win-x64/
 
 ### 15.1 Automated tests
 
-- C# unit tests for task-plan validation, subtask advancement, LLM caching/fallback, state fusion, policy, recovery, and recording manifests.
+- C# unit tests for task-plan validation, subtask advancement, LLM caching/fallback, state fusion, policy, recovery, recording manifests, and comparison calculations.
 - C# integration tests for worker lifecycle, authenticated IPC, overlay lifecycle, native bridge messages, and shutdown recovery.
 - Python tests with fixture frames for face presence, coarse left/center/right gaze, low-confidence rejection, calibration transforms, parameter changes, and recorder finalization.
 - Browser tests for immediate settings updates, image/background-image blur, dynamic DOM changes, future-text mask, animation suppression, page protection, reading progress, and native bridge reconnection.
@@ -349,12 +351,12 @@ Extension installation and camera permission are user-visible privileged steps a
 
 The rebuild is demo- and release-ready when all of the following are true:
 
-1. `Anchor.exe` launches the dashboard on a clean Windows 11 x64 user account without Python.
-2. The tray icon, dashboard restore, background session, and exit lifecycle work.
+1. `Anchor.exe` launches the Settings page on a clean Windows 11 x64 user account without Python.
+2. The tray icon, Settings-page restore, background session, and exit lifecycle work.
 3. Test Gaze detects a real camera, calibrates, exposes confidence, and visibly responds to parameter changes.
 4. The worker supplies nonconstant gaze data to attention fusion.
 5. DeepSeek produces validated subtasks and semantic relevance when configured; failures are explicit and recoverable.
-6. The current subtask and progress update in both dashboard and Goal Beacon.
+6. The current subtask and progress update in both Settings page and Goal Beacon.
 7. The beacon is visible and performs the one-shot shake on a confirmed distraction.
 8. Toolkit controls cause immediate visible desktop or page changes.
 9. The intention gate explains an LLM-informed judgment and accepts user correction.
@@ -362,7 +364,7 @@ The rebuild is demo- and release-ready when all of the following are true:
 11. Browser settings reach an enabled tab through the native bridge.
 12. A local PDF/document receives applicable desktop overlays and sensing.
 13. Study recording produces a playable MP4 plus valid event and metric files.
-14. Anchor-enabled and baseline trials can be compared in the dashboard.
+14. The **Compare recordings** button on the Settings page compares an Anchor-enabled trial with a baseline trial and reports validated metric differences.
 15. Automated suites, deterministic replays, visible Windows tests, package launch, and clean shutdown all pass.
 
 ## 17. Explicit limits
