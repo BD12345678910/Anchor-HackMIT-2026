@@ -11,7 +11,6 @@ public sealed class ForegroundWindowSensor : IDisposable
 {
     private const uint EventSystemForeground = 0x0003;
     private const uint WineventOutOfContext = 0x0000;
-    private const uint WineventSkipOwnProcess = 0x0002;
 
     private readonly Guid _sessionId;
     private readonly Queue<DateTimeOffset> _switches = new();
@@ -78,11 +77,14 @@ public sealed class ForegroundWindowSensor : IDisposable
             _callback,
             0,
             0,
-            WineventOutOfContext | WineventSkipOwnProcess);
+            WineventOutOfContext);
         if (_hook == IntPtr.Zero)
         {
             throw new InvalidOperationException($"Foreground hook failed with Win32 error {Marshal.GetLastWin32Error()}.");
         }
+
+        // The hook only reports changes, so seed with whatever is already in front.
+        ObserveWindow(GetForegroundWindow());
     }
 
     public void Dispose()
@@ -112,6 +114,11 @@ public sealed class ForegroundWindowSensor : IDisposable
         _ = childId;
         _ = eventThread;
         _ = eventTime;
+        ObserveWindow(window);
+    }
+
+    private void ObserveWindow(IntPtr window)
+    {
         if (window == IntPtr.Zero || _writer is null)
         {
             return;
@@ -158,6 +165,9 @@ public sealed class ForegroundWindowSensor : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr window, StringBuilder text, int maximumCount);
