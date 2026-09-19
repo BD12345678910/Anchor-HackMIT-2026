@@ -30,6 +30,8 @@ public sealed class ForegroundWindowSensor : IDisposable
         _sessionId = sessionId;
     }
 
+    public DerivedEvent? LastEvent { get; private set; }
+
     public DerivedEvent Observe(string processName, string windowTitle, DateTimeOffset timestamp)
     {
         processName = string.IsNullOrWhiteSpace(processName) ? "unknown" : processName.Trim();
@@ -44,7 +46,7 @@ public sealed class ForegroundWindowSensor : IDisposable
             _switches.Dequeue();
         }
 
-        return DerivedEvent.Create(
+        LastEvent = DerivedEvent.Create(
             _sessionId,
             timestamp,
             "window",
@@ -56,6 +58,7 @@ public sealed class ForegroundWindowSensor : IDisposable
                 ["app_switch_count"] = _switches.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["secure_window"] = SecureWindowClassifier.IsSecure(processName, windowTitle).ToString()
             });
+        return LastEvent;
     }
 
     public void Start(ChannelWriter<DerivedEvent> writer)

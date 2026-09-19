@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Anchor.Core/Anchor.Core.csproj" />
+    <Project Path="src/Anchor.Desktop/Anchor.Desktop.csproj">
+      <Platform Project="x86" />
+    </Project>
     <Project Path="src/Anchor.Infrastructure/Anchor.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">

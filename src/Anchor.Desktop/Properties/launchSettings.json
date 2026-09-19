@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Anchor.Desktop (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Anchor.Desktop (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

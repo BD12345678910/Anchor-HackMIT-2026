@@ -338,27 +338,27 @@ Commit: `feat: add privacy-safe Windows sensing and watchdog`
 - `SessionOrchestrator.StartAsync(title)`, `ReportDistractedAsync()`, `StopAsync()`.
 - View model exposes task title, attention state, confidence, reasons, elapsed focus, interruption count, recovery time, and capability status.
 
-- [ ] **Step 1: Write orchestrator tests against fake sensors, store, worker, and intervention presenter**
+- [x] **Step 1: Write orchestrator tests against fake sensors, store, worker, and intervention presenter**
 
 Verify start/stop lifecycle, one active session, manual distraction recovery, cooldown, repeated dismissals, missing worker, cancellation, and clean shutdown.
 
-- [ ] **Step 2: Create the unobtrusive shell**
+- [x] **Step 2: Create the unobtrusive shell**
 
 Build a compact main window with task title entry, Start/Stop, “I’m distracted,” current state, capability chips, progress timeline, and privacy controls. Closing the window minimizes to the notification area while an active session exists; Exit performs full cleanup.
 
-- [ ] **Step 3: Implement Goal Beacon**
+- [x] **Step 3: Implement Goal Beacon**
 
 Create a click-through always-on-top compact overlay showing the current task. Pulse opacity/scale only after sustained high-confidence drift, cap animation at two seconds, respect reduced-motion settings, and expose dismiss/snooze controls when hovered.
 
-- [ ] **Step 4: Implement visual filter and intention gate**
+- [x] **Step 4: Implement visual filter and intention gate**
 
 The filter overlay dims/desaturates configured non-task regions without capturing protected windows. The gate appears before a high-confidence irrelevant transition and offers Continue, Park for later, Return to task, and Disable gates.
 
-- [ ] **Step 5: Implement recovery card and timeline**
+- [x] **Step 5: Implement recovery card and timeline**
 
 Show last meaningful action, last location, next step, elapsed interruption, and actions for Resume, Reopen, Recap, Break down, and Dismiss. Record intervention response and recovery latency.
 
-- [ ] **Step 6: Build, smoke-test launch, and commit**
+- [x] **Step 6: Build, smoke-test launch, and commit**
 
 Run: `dotnet build Anchor.slnx -c Debug -p:Platform=x64`
 
