@@ -16,7 +16,7 @@
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Spacing="5">
                     <TextBlock Text="Anchor" FontSize="32" FontWeight="SemiBold" />
-                    <TextBlock Text="A quiet, local attention assistant that helps you return—not feel judged."
+                    <TextBlock Text="Settings · plan, sense, prevent, recover, and review without leaving your desktop."
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
                 <Border Grid.Column="1" Padding="12,7" CornerRadius="16" Background="#227C9CFF">
@@ -31,18 +31,49 @@
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <Grid RowSpacing="16">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <StackPanel Spacing="7">
                         <TextBlock Text="What are you trying to do?" FontWeight="SemiBold" />
                         <TextBox Text="{x:Bind ViewModel.TaskTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="A concrete task, not a vague category" FontSize="17" />
                     </StackPanel>
                     <Grid Grid.Row="1" ColumnSpacing="10">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <Button Content="Start focus session" Command="{x:Bind ViewModel.StartCommand}" Style="{StaticResource AccentButtonStyle}" />
-                        <Button Grid.Column="1" Content="Stop" Command="{x:Bind ViewModel.StopCommand}" />
-                        <Button Grid.Column="3" Content="I'm distracted" Command="{x:Bind ViewModel.ReportDistractedCommand}" Style="{StaticResource AccentButtonStyle}" />
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Button Content="Plan goal" Command="{x:Bind ViewModel.PlanGoalCommand}" Style="{StaticResource AccentButtonStyle}" />
+                        <Button Grid.Column="1" Content="Start focus session" Command="{x:Bind ViewModel.StartCommand}" IsEnabled="{x:Bind ViewModel.IsPlanReady, Mode=OneWay}" />
+                        <Button Grid.Column="2" Content="Stop" Command="{x:Bind ViewModel.StopCommand}" />
+                        <Button Grid.Column="4" Content="I'm distracted" Command="{x:Bind ViewModel.ReportDistractedCommand}" Style="{StaticResource AccentButtonStyle}" />
                     </Grid>
+                    <Border Grid.Row="2" Padding="14" CornerRadius="12" Background="#241C2941">
+                        <StackPanel Spacing="10">
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Text="Current plan" FontWeight="SemiBold" />
+                                    <TextBlock Text="{x:Bind ViewModel.PlanSource, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="{x:Bind ViewModel.TaskProgressLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="#AFC1FF" />
+                                    <Button Content="Done with current step" Command="{x:Bind ViewModel.MarkCurrentStepCompleteCommand}" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text="{x:Bind ViewModel.CurrentSubtask, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <ListView ItemsSource="{x:Bind ViewModel.TaskSteps, Mode=OneWay}" MaxHeight="190">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="0,5" ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Number}" Foreground="#AFC1FF" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding CompletionCriterion}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding Status}" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -100,6 +131,16 @@
 
                 <StackPanel Grid.Column="1" Spacing="16">
                     <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="DeepSeek intelligence" FontSize="19" FontWeight="SemiBold" />
+                            <ToggleSwitch Header="Use DeepSeek for task plans and relevance" IsOn="{x:Bind ViewModel.DeepSeekEnabled, Mode=TwoWay}" />
+                            <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="Stored encrypted for this Windows account"
+                                         PasswordChanged="DeepSeekKeyBox_PasswordChanged" />
+                            <Button Content="Save DeepSeek settings" HorizontalAlignment="Left" Command="{x:Bind ViewModel.SaveDeepSeekSettingsCommand}" />
+                            <TextBlock Text="{x:Bind ViewModel.DeepSeekStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                         <StackPanel Spacing="12">
                             <TextBlock Text="Focus toolkit" FontSize="19" FontWeight="SemiBold" />
                             <ToggleSwitch Header="Dynamic image blur" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.BlurImagesEnabled, Mode=TwoWay}" />
@@ -107,6 +148,11 @@
                             <ToggleSwitch Header="Visual focus filter" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.VisualFilterEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Pointer guard" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.PointerGuardEnabled, Mode=TwoWay}" />
                             <ToggleSwitch Header="Audio shield" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.AudioShieldEnabled, Mode=TwoWay}" />
+                            <ToggleSwitch Header="Reduced motion" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.ReducedMotion, Mode=TwoWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Preview beacon" Command="{x:Bind ViewModel.PreviewBeaconCommand}" />
+                                <Button Content="Test attention shake" Command="{x:Bind ViewModel.TestBeaconShakeCommand}" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                     <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">

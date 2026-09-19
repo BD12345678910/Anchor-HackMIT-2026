@@ -15,6 +15,9 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     private IntentionGateWindow? _gate;
 
     public string TaskTitle { get; set; } = "Return to your task";
+    public string CurrentSubtask { get; set; } = "Choose the smallest next action";
+    public string ProgressLabel { get; set; } = "0 of 1";
+    public bool ReducedMotion { get; set; }
     public bool EnableVisualFilter { get; set; } = true;
     public bool EnablePointerGuard { get; set; }
     public bool HasRestrictiveOverlay => _filter is not null || _gate is not null || _pointer.IsConfined;
@@ -60,8 +63,22 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     public void ShowBeacon(bool pulse = false)
     {
         _beacon ??= new GoalBeaconWindow();
-        _beacon.SetTask(TaskTitle, pulse);
+        _beacon.SetGoal(TaskTitle, CurrentSubtask, ProgressLabel, pulse, ReducedMotion);
         _beacon.Activate();
+        OverlayWindowHelper.Configure(_beacon, 500, 118, clickThrough: true);
+    }
+
+    public void UpdateGoal(string goal, string? currentSubtask, string progressLabel)
+    {
+        TaskTitle = goal;
+        CurrentSubtask = string.IsNullOrWhiteSpace(currentSubtask)
+            ? "Task complete"
+            : currentSubtask;
+        ProgressLabel = progressLabel;
+        if (_beacon is not null)
+        {
+            ShowBeacon();
+        }
     }
 
     public void ReleasePointer() => _pointer.Release();

@@ -16,6 +16,12 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        Loaded += async (_, _) => await ViewModel.InitializeAsync();
         Unloaded += async (_, _) => await ViewModel.DisposeAsync();
+    }
+
+    private void DeepSeekKeyBox_PasswordChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        ViewModel.DeepSeekApiKey = ((PasswordBox)sender).Password;
     }
 }

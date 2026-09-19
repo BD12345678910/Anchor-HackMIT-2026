@@ -1,5 +1,6 @@
 using Anchor.Core.Services;
 using Anchor.Infrastructure.Persistence;
+using Anchor.Infrastructure.DeepSeek;
 using Anchor.Infrastructure.Windows;
 using Anchor.Infrastructure.Worker;
 
@@ -7,13 +8,17 @@ namespace Anchor_Desktop.Services;
 
 public sealed class AppServices : IAsyncDisposable
 {
+    private readonly HttpClient _deepSeekHttpClient;
+
     private AppServices(
         SqliteEventStore store,
         InferenceEngineAdapter inference,
         WindowsSensorCoordinator sensors,
         OverlayPresenter overlays,
         SessionOrchestrator orchestrator,
-        SafetyWatchdog watchdog)
+        SafetyWatchdog watchdog,
+        DeepSeekSettingsStore deepSeekSettings,
+        HttpClient deepSeekHttpClient)
     {
         Store = store;
         Inference = inference;
@@ -21,6 +26,8 @@ public sealed class AppServices : IAsyncDisposable
         Overlays = overlays;
         Orchestrator = orchestrator;
         Watchdog = watchdog;
+        DeepSeekSettings = deepSeekSettings;
+        _deepSeekHttpClient = deepSeekHttpClient;
     }
 
     public SqliteEventStore Store { get; }
@@ -29,6 +36,7 @@ public sealed class AppServices : IAsyncDisposable
     public OverlayPresenter Overlays { get; }
     public SessionOrchestrator Orchestrator { get; }
     public SafetyWatchdog Watchdog { get; }
+    public DeepSeekSettingsStore DeepSeekSettings { get; }
 
     public static AppServices Create()
     {
@@ -43,7 +51,34 @@ public sealed class AppServices : IAsyncDisposable
         var overlays = new OverlayPresenter();
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);
         var watchdog = new SafetyWatchdog(overlays, TimeSpan.FromSeconds(30));
-        return new AppServices(store, inference, sensors, overlays, orchestrator, watchdog);
+        var deepSeekSettings = new DeepSeekSettingsStore(Path.Combine(appData, "settings.json"));
+        var deepSeekHttpClient = new HttpClient();
+        return new AppServices(
+            store,
+            inference,
+            sensors,
+            overlays,
+            orchestrator,
+            watchdog,
+            deepSeekSettings,
+            deepSeekHttpClient);
+    }
+
+    public async Task<TaskSessionPlanner> CreateTaskPlannerAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var settings = await DeepSeekSettings.LoadAsync(cancellationToken);
+        var environmentKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? string.Empty;
+        var key = settings?.Enabled == true ? settings.ApiKey : environmentKey;
+        var model = settings?.Model ?? "deepseek-flash";
+        var endpoint = settings is null
+            ? DeepSeekClient.DefaultEndpoint
+            : new Uri(settings.Endpoint, UriKind.Absolute);
+        return new TaskSessionPlanner(new DeepSeekClient(
+            _deepSeekHttpClient,
+            key,
+            model,
+            endpoint));
     }
 
     public async ValueTask DisposeAsync()
@@ -53,6 +88,7 @@ public sealed class AppServices : IAsyncDisposable
         Sensors.Dispose();
         await Inference.DisposeAsync();
         await Store.DisposeAsync();
+        _deepSeekHttpClient.Dispose();
     }
 
     private static string FindRepositoryRoot(string start)
