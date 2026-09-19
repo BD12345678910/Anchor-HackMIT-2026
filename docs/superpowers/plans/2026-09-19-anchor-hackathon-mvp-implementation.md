@@ -205,7 +205,7 @@ Commit: `feat: add deterministic attention and intervention engine`
 - `ProgressTracker.Apply(DerivedEvent) -> ProgressSnapshot`
 - `IEventStore.AppendAsync(DerivedEvent, CancellationToken)` and date-range deletion.
 
-- [ ] **Step 1: Write recovery-anchor tests**
+- [x] **Step 1: Write recovery-anchor tests**
 
 ```csharp
 [Fact]
@@ -218,19 +218,19 @@ public void Freeze_keeps_last_confident_anchor_not_distracting_window()
 }
 ```
 
-- [ ] **Step 2: Implement deterministic capsule generation**
+- [x] **Step 2: Implement deterministic capsule generation**
 
 Store task title, application, sanitized document/URL identity, last meaningful action, current location, selected non-sensitive text, next-step suggestion, and restoration commands. Redact email addresses, tokens, likely secrets, password fields, and user-configured applications before persistence.
 
-- [ ] **Step 3: Write SQLite round-trip and deletion tests**
+- [x] **Step 3: Write SQLite round-trip and deletion tests**
 
 Use a temporary database. Verify schema migration, append/query order, cancellation, session deletion, all-history deletion, and that raw input values are absent from serialized payloads.
 
-- [ ] **Step 4: Implement WAL-mode SQLite persistence**
+- [x] **Step 4: Implement WAL-mode SQLite persistence**
 
 Use parameterized commands, an explicit schema version, WAL mode, bounded payload sizes, and transactions for capsule plus event writes.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Commit: `feat: add local context recovery and progress store`
 

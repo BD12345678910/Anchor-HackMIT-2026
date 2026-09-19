@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Anchor.Core/Anchor.Core.csproj" />
+    <Project Path="src/Anchor.Infrastructure/Anchor.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Anchor.Core.Tests/Anchor.Core.Tests.csproj" />
+    <Project Path="tests/Anchor.Infrastructure.Tests/Anchor.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>
