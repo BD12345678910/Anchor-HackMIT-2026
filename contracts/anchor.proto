@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package anchor.v1;
+option csharp_namespace = "Anchor.Contracts";
+
+service InferenceWorker {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc PredictAttention(PredictAttentionRequest) returns (AttentionPredictionReply);
+  rpc AnalyzeFrame(AnalyzeFrameRequest) returns (AnalyzeFrameReply);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownReply);
+}
+
+message HealthRequest {
+  uint32 protocol_version = 1;
+}
+
+message HealthResponse {
+  uint32 protocol_version = 1;
+  string worker_version = 2;
+  Capability camera = 3;
+  Capability visual_analysis = 4;
+}
+
+message Capability {
+  bool available = 1;
+  string reason = 2;
+}
+
+message SensorWindowMessage {
+  int64 timestamp_unix_ms = 1;
+  uint32 key_count = 2;
+  double mouse_distance = 3;
+  double idle_seconds = 4;
+  double app_relevance = 5;
+  double gaze_presence = 6;
+  uint32 app_switch_count = 7;
+  uint32 scroll_reversal_count = 8;
+  bool gaze_available = 9;
+  bool manual_report = 10;
+}
+
+message PredictAttentionRequest {
+  SensorWindowMessage sensor_window = 1;
+}
+
+message AttentionPredictionReply {
+  double distraction_probability = 1;
+  double confidence = 2;
+  repeated string reason_codes = 3;
+  uint32 latency_ms = 4;
+}
+
+message AnalyzeFrameRequest {
+  bytes jpeg = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+}
+
+message AnalyzeFrameReply {
+  oneof outcome {
+    VisualAnalysis analysis = 1;
+    Unavailable unavailable = 2;
+  }
+}
+
+message VisualAnalysis {
+  double salience = 1;
+  double motion = 2;
+  repeated VisualRegion regions = 3;
+}
+
+message VisualRegion {
+  double x = 1;
+  double y = 2;
+  double width = 3;
+  double height = 4;
+  double salience = 5;
+}
+
+message Unavailable {
+  string reason = 1;
+}
+
+message ShutdownRequest {}
+message ShutdownReply { bool accepted = 1; }

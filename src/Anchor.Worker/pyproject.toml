@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchor-worker"
+version = "0.1.0"
+description = "Local multimodal inference worker for Anchor"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "grpcio==1.84.0",
+  "grpcio-tools==1.84.0",
+  "numpy>=2.2,<3",
+  "protobuf>=7.35.1,<8",
+]
+
+[project.optional-dependencies]
+vision = [
+  "mediapipe>=0.10.30,<0.11",
+  "opencv-python>=4.12,<5",
+]
+test = [
+  "pytest>=8.4,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra -p no:cacheprovider"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["anchor_worker*"]

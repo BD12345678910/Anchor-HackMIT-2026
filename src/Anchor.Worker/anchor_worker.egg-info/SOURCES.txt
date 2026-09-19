@@ -1,0 +1,9 @@
+pyproject.toml
+anchor_worker.egg-info/PKG-INFO
+anchor_worker.egg-info/SOURCES.txt
+anchor_worker.egg-info/dependency_links.txt
+anchor_worker.egg-info/requires.txt
+anchor_worker.egg-info/top_level.txt
+tests/test_features.py
+tests/test_inference.py
+tests/test_server.py

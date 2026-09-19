@@ -1,0 +1,11 @@
+grpcio==1.84.0
+grpcio-tools==1.84.0
+numpy<3,>=2.2
+protobuf<8,>=7.35.1
+
+[test]
+pytest<9,>=8.4
+
+[vision]
+mediapipe<0.11,>=0.10.30
+opencv-python<5,>=4.12

@@ -249,11 +249,11 @@ Commit: `feat: add local context recovery and progress store`
 - The host sends derived `SensorWindow` messages and optional compressed screen crops only when visual analysis is enabled.
 - The worker returns bounded scores, availability flags, latency, and reason codes.
 
-- [ ] **Step 1: Define the Protocol Buffer contract**
+- [x] **Step 1: Define the Protocol Buffer contract**
 
 Define numeric feature fields rather than arbitrary maps for the stable MVP contract. Add a `oneof` for unavailable/degraded analysis and include protocol version `1` in health responses.
 
-- [ ] **Step 2: Write failing Python tests**
+- [x] **Step 2: Write failing Python tests**
 
 ```python
 def test_predict_is_bounded_and_explainable():
@@ -267,19 +267,19 @@ def test_malformed_values_are_sanitized():
     assert result.mouse_distance == 0
 ```
 
-- [ ] **Step 3: Implement deterministic worker baseline**
+- [x] **Step 3: Implement deterministic worker baseline**
 
 Implement feature normalization, calibrated logistic scoring, and exponential temporal smoothing in pure Python/Numpy. Make OpenCV and MediaPipe optional extras; report unavailable capabilities instead of failing startup.
 
-- [ ] **Step 4: Implement authenticated loopback startup**
+- [x] **Step 4: Implement authenticated loopback startup**
 
 Require a random token in gRPC metadata, bind only to `127.0.0.1`, print one JSON readiness line to stdout, and support graceful shutdown.
 
-- [ ] **Step 5: Implement host worker lifecycle**
+- [x] **Step 5: Implement host worker lifecycle**
 
 Start the worker with redirected streams, wait for readiness with a five-second timeout, validate protocol version, use deadlines on every call, restart at most twice with backoff, and remain in deterministic mode after failure.
 
-- [ ] **Step 6: Run Python and C# tests, then commit**
+- [x] **Step 6: Run Python and C# tests, then commit**
 
 Run: `python -m pytest src/Anchor.Worker/tests -q`
 

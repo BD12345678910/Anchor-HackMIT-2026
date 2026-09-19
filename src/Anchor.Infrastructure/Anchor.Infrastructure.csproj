@@ -5,7 +5,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\..\contracts\anchor.proto" GrpcServices="Client" Link="Contracts\anchor.proto" />
   </ItemGroup>
 
   <PropertyGroup>

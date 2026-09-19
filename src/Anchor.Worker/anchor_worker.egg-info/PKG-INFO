@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: anchor-worker
+Version: 0.1.0
+Summary: Local multimodal inference worker for Anchor
+Requires-Python: <3.13,>=3.11
+Requires-Dist: grpcio==1.84.0
+Requires-Dist: grpcio-tools==1.84.0
+Requires-Dist: numpy<3,>=2.2
+Requires-Dist: protobuf<8,>=7.35.1
+Provides-Extra: vision
+Requires-Dist: mediapipe<0.11,>=0.10.30; extra == "vision"
+Requires-Dist: opencv-python<5,>=4.12; extra == "vision"
+Provides-Extra: test
+Requires-Dist: pytest<9,>=8.4; extra == "test"
