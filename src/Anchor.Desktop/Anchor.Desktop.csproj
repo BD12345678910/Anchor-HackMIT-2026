@@ -5,6 +5,9 @@
     <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <RootNamespace>Anchor_Desktop</RootNamespace>
     <AssemblyName>Anchor</AssemblyName>
+    <AssemblyTitle>Anchor</AssemblyTitle>
+    <Product>Anchor</Product>
+    <Description>ADHD-friendly attention support</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

@@ -47,6 +47,7 @@ try {
         Start-Sleep -Milliseconds 250
         $process.Refresh()
         if ($process.Responding -and
+            $process.MainWindowHandle -ne 0 -and
             (Test-Path -LiteralPath $endpoint -PathType Leaf) -and
             (Get-Item -LiteralPath $endpoint).LastWriteTimeUtc -ge $launchTime) {
             $ready = $true

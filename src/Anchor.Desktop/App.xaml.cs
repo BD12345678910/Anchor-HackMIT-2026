@@ -57,6 +57,8 @@ public partial class App : Application
         Services = AppServices.Create();
         Window = new MainWindow();
         Window.Activate();
+        Window.Title = "Anchor Settings";
+        Window.AppWindow.Title = "Anchor Settings";
         if (Environment.GetEnvironmentVariable("ANCHOR_VERIFY_RELEASE") == "1")
         {
             _ = CompleteVerificationLaunchAsync((MainWindow)Window);
@@ -65,7 +67,7 @@ public partial class App : Application
 
     private static async Task CompleteVerificationLaunchAsync(MainWindow window)
     {
-        await Task.Delay(TimeSpan.FromSeconds(3));
+        await Task.Delay(TimeSpan.FromSeconds(6));
         await window.RequestExitAsync();
     }
 }

@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = "Anchor Settings";
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon("Assets/AppIcon.ico");
@@ -43,7 +44,6 @@ public sealed partial class MainWindow : Window
 
         _windowProcedure = WindowMessage;
         _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        SetWindowText(_windowHandle, "Anchor Settings");
         _originalProcedure = SetWindowLongPtr(
             _windowHandle,
             GwlWndProc,
@@ -184,7 +184,4 @@ public sealed partial class MainWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool UnregisterHotKey(IntPtr window, int identifier);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowText(IntPtr window, string text);
 }
