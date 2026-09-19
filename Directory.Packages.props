@@ -10,6 +10,7 @@
     <PackageVersion Include="Grpc.Tools" Version="2.83.0" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
