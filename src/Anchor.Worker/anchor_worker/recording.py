@@ -101,6 +101,7 @@ class StudyRecorder:
         self._usable_gaze_samples = 0
         self._gaze_away_samples = 0
         self._intervention_count = 0
+        self._subtasks_completed = 0
         self._distraction_ms = 0
         self._recovery_ms = 0
         self._interruption_count = 0
@@ -207,6 +208,8 @@ class StudyRecorder:
                 return
             if item.get("type") == "intervention" and item.get("presented"):
                 self._intervention_count += 1
+            if item.get("type") == "subtask_completed":
+                self._subtasks_completed += 1
             item.setdefault("at_ms", int(self._elapsed() * 1000))
             self._events_file.write(json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n")
             self._events_file.flush()
@@ -330,6 +333,7 @@ class StudyRecorder:
             "recoverySeconds": round(self._recovery_ms / 1000, 3),
             "interruptionCount": self._interruption_count,
             "interventionCount": self._intervention_count,
+            "subtasksCompleted": self._subtasks_completed,
             "sampleCount": self._sample_count,
             "frameCount": self._frame_count,
         }

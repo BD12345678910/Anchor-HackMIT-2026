@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Anchor.Core.Models;
 using Anchor.Core.Services;
@@ -10,6 +11,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
+using Windows.Storage.Pickers;
 
 namespace Anchor_Desktop.ViewModels;
 
@@ -21,8 +23,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private readonly AppServices _services;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _gazeTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
+    private readonly DispatcherTimer _recordingTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private bool _tickInFlight;
     private bool _gazeTickInFlight;
+    private bool _recordingTickInFlight;
     private int _calibrationIndex;
     private AttentionFusion _attentionFusion = new();
     private bool _sessionGazeActive;
@@ -36,6 +40,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _services = services;
         _timer.Tick += Timer_Tick;
         _gazeTimer.Tick += GazeTimer_Tick;
+        _recordingTimer.Tick += RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant += Overlays_CurrentWindowMarkedRelevant;
         _services.Overlays.BreakdownProvider = BreakDownRecoveryStepAsync;
     }
@@ -88,6 +93,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string CalibrationTarget { get; set; } = "Top left";
     [ObservableProperty] public partial string CalibrationProgressLabel { get; set; } = "0 of 9";
     [ObservableProperty] public partial bool TreatCurrentWindowAsRelevant { get; set; }
+    [ObservableProperty] public partial string ParticipantCode { get; set; } = "P01";
+    [ObservableProperty] public partial int RecordingModeIndex { get; set; } = 1;
+    [ObservableProperty] public partial string RecordingOutputFolder { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Anchor Studies");
+    [ObservableProperty] public partial bool WebcamRecordingConsent { get; set; }
+    [ObservableProperty] public partial bool IsRecording { get; set; }
+    [ObservableProperty] public partial string RecordingStatus { get; set; } = "Ready · screen and gaze stay local";
+    [ObservableProperty] public partial string RecordingElapsed { get; set; } = "00:00";
+    [ObservableProperty] public partial string LatestRecordingFiles { get; set; } = "No recording created yet";
+    [ObservableProperty] public partial string ComparisonReport { get; set; } = "Choose Compare recordings after creating one baseline and one Anchor-enabled trial.";
 
     partial void OnVisualFilterEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
     partial void OnBlurImagesEnabledChanged(bool value) => _ = ApplyToolkitStateAsync();
@@ -276,6 +291,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
         var completed = _taskPlanner.Current.Progress.CurrentStep.Title;
         var state = _taskPlanner.MarkCurrentComplete(CompletionSource.User, DateTimeOffset.UtcNow);
+        _services.Recording.RecordSubtaskCompleted(completed);
         ApplyTaskPlanState(state);
         _services.Overlays.UpdateGoal(TaskTitle, state.Progress.CurrentStep?.Title, state.ProgressLabel);
         _services.Orchestrator.UpdateTaskContext(
@@ -330,6 +346,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _timer.Stop();
         try
         {
+            if (_services.Recording.IsRecording)
+            {
+                _recordingTimer.Stop();
+                await StopRecordingAsync();
+            }
             await _services.Orchestrator.StopAsync();
             _sessionGazeActive = false;
             _services.Watchdog.Signal(Anchor.Infrastructure.Windows.SafetyReleaseReason.Shutdown);
@@ -525,6 +546,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private async Task StopGazeTestAsync()
     {
         _gazeTimer.Stop();
+        _recordingTimer.Stop();
         await _services.Inference.StopGazeAsync();
         IsGazeRunning = false;
         GazePreviewSource = null;
@@ -533,17 +555,124 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         GazeStatusMessage = "Camera off · saved adjustments will be used next time.";
     }
 
+    [RelayCommand]
+    private async Task ChooseRecordingFolderAsync()
+    {
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is not null) RecordingOutputFolder = folder.Path;
+    }
+
+    [RelayCommand]
+    private async Task StartRecordingAsync()
+    {
+        if (!IsRunning)
+        {
+            RecordingStatus = "Start a planned focus session before recording so task, gaze, and attention stay aligned.";
+            return;
+        }
+        if (IsRecording) return;
+        var mode = RecordingModeIndex == 0 ? TrialMode.Baseline : TrialMode.AnchorEnabled;
+        RecordingStatus = "Starting local screen capture…";
+        var result = await _services.Recording.StartAsync(
+            RecordingOutputFolder,
+            mode,
+            ParticipantCode,
+            fps: 15);
+        if (result.Manifest is null)
+        {
+            RecordingStatus = $"Could not start recording: {result.Error}";
+            return;
+        }
+        IsRecording = true;
+        RecordingElapsed = "00:00";
+        LatestRecordingFiles = result.Manifest.TrialId;
+        RecordingStatus = mode == TrialMode.Baseline
+            ? "REC · baseline · sensing on, interventions off"
+            : "REC · Anchor enabled · interventions included";
+        _recordingTimer.Start();
+        AddTimeline("Recording started", $"{mode} · {result.Manifest.TrialId}");
+    }
+
+    [RelayCommand]
+    private async Task StopRecordingAsync()
+    {
+        if (!_services.Recording.IsRecording)
+        {
+            IsRecording = false;
+            return;
+        }
+        _recordingTimer.Stop();
+        var manifest = _services.Recording.CurrentManifest;
+        var status = await _services.Recording.StopAsync();
+        IsRecording = false;
+        RecordingStatus = status.State == StudyRecordingState.Complete
+            ? $"Complete · {status.FrameCount} frames · {status.ElapsedSeconds:0.0}s"
+            : $"Recording failed: {status.ErrorCode}";
+        if (manifest is not null)
+        {
+            LatestRecordingFiles = $"Video: {manifest.VideoPath}\nSummary: {manifest.SummaryPath}";
+        }
+        AddTimeline("Recording stopped", RecordingStatus);
+    }
+
+    [RelayCommand]
+    private async Task CompareRecordingsAsync()
+    {
+        var firstPath = await PickSummaryAsync("Choose the baseline summary");
+        if (firstPath is null) return;
+        var secondPath = await PickSummaryAsync("Choose the Anchor-enabled summary");
+        if (secondPath is null) return;
+        var first = StudySummaryLoader.Load(firstPath);
+        var second = StudySummaryLoader.Load(secondPath);
+        if (first.Summary is null || second.Summary is null)
+        {
+            ComparisonReport = $"Cannot compare: {first.ErrorCode ?? second.ErrorCode}";
+            return;
+        }
+        var outcome = RecordingComparison.TryCompare(first.Summary, second.Summary);
+        if (outcome.Result is null)
+        {
+            ComparisonReport = $"Cannot compare: {outcome.ErrorCode}";
+            return;
+        }
+        var result = outcome.Result;
+        ComparisonReport =
+            $"Gaze coverage: {result.UsableGazeCoverageDelta:+0.0%;-0.0%;0.0%}\n" +
+            $"Gaze-away time: {result.GazeAwaySecondsDelta:+0.0;-0.0;0.0}s\n" +
+            $"Distracted/low-relevance time: {result.DistractionSecondsDelta:+0.0;-0.0;0.0}s\n" +
+            $"Interruptions: {result.InterruptionCountDelta:+#;-#;0}\n" +
+            $"Recovery time: {result.RecoverySecondsDelta:+0.0;-0.0;0.0}s\n" +
+            $"Subtasks completed: {result.SubtasksCompletedDelta:+#;-#;0}\n\n{result.Disclaimer}";
+    }
+
+    [RelayCommand]
+    private void OpenRecordingFolder()
+    {
+        Directory.CreateDirectory(RecordingOutputFolder);
+        var start = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
+        start.ArgumentList.Add(RecordingOutputFolder);
+        Process.Start(start);
+    }
+
     public async ValueTask DisposeAsync()
     {
         _timer.Stop();
         _gazeTimer.Stop();
         _timer.Tick -= Timer_Tick;
         _gazeTimer.Tick -= GazeTimer_Tick;
+        _recordingTimer.Tick -= RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant -= Overlays_CurrentWindowMarkedRelevant;
         _services.Overlays.BreakdownProvider = null;
         if (IsGazeRunning)
         {
             await _services.Inference.StopGazeAsync();
+        }
+        if (_services.Recording.IsRecording)
+        {
+            await _services.Recording.StopAsync();
         }
         if (IsRunning)
         {
@@ -620,10 +749,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 raw.IsSecureWindow,
                 _services.Inference.IsAvailable));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
-            if (_services.Recording.IsRecording)
-            {
-                await _services.Recording.AppendSampleAsync(gaze, prediction, TaskTitle, CurrentSubtask);
-            }
             ApplyPrediction(prediction);
         }
         catch (Exception error)
@@ -662,6 +787,45 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         finally
         {
             _gazeTickInFlight = false;
+        }
+    }
+
+    private async void RecordingTimer_Tick(object? sender, object e)
+    {
+        if (_recordingTickInFlight || !IsRecording) return;
+        _recordingTickInFlight = true;
+        try
+        {
+            var gaze = _sessionGazeActive ? await _services.Inference.ReadGazeAsync() : null;
+            var prediction = _services.Orchestrator.LastPrediction
+                ?? AttentionPrediction.Create(Anchor.Core.Models.AttentionState.Focused, 0.5, 0, ["awaiting_first_sample"]);
+            var status = await _services.Recording.AppendSampleAsync(
+                gaze,
+                prediction,
+                TaskTitle,
+                CurrentSubtask);
+            RecordingElapsed = TimeSpan.FromSeconds(status.ElapsedSeconds).ToString(@"mm\:ss");
+            if (status.State == StudyRecordingState.Failed)
+            {
+                _recordingTimer.Stop();
+                await _services.Recording.StopAsync();
+                IsRecording = false;
+                RecordingStatus = $"Recording failed: {status.ErrorCode}";
+            }
+        }
+        catch (Exception error)
+        {
+            _recordingTimer.Stop();
+            if (_services.Recording.IsRecording)
+            {
+                await _services.Recording.StopAsync();
+            }
+            IsRecording = false;
+            RecordingStatus = $"Recording stopped after an error: {error.Message}";
+        }
+        finally
+        {
+            _recordingTickInFlight = false;
         }
     }
 
@@ -743,6 +907,20 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private static string ContextIdentity(TaskContext context) =>
         $"{context.ProcessName}|{context.Domain}|{context.WindowTitle}";
+
+    private static async Task<string?> PickSummaryAsync(string title)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            ViewMode = PickerViewMode.List,
+            CommitButtonText = title
+        };
+        picker.FileTypeFilter.Add(".json");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
+        var file = await picker.PickSingleFileAsync();
+        return file?.Path;
+    }
 
     private void AddTimeline(string label, string detail)
     {

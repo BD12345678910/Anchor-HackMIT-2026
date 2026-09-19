@@ -89,6 +89,9 @@ public sealed class StudyRecordingService : IAsyncDisposable
     public void RecordIntervention(InterventionDecision decision, ContextCapsule? capsule) =>
         _ = AppendEventSafelyAsync(decision, capsule);
 
+    public void RecordSubtaskCompleted(string title) =>
+        _ = AppendSimpleEventSafelyAsync("subtask_completed", title);
+
     public Task<StudyRecordingStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
         _inference.GetRecordingStatusAsync(cancellationToken);
 
@@ -124,5 +127,11 @@ public sealed class StudyRecordingService : IAsyncDisposable
         {
             // Recording degradation must never block or crash an intervention.
         }
+    }
+
+    private async Task AppendSimpleEventSafelyAsync(string type, string detail)
+    {
+        try { await AppendEventAsync(type, presented: false, detail); }
+        catch { }
     }
 }

@@ -127,6 +127,51 @@
                             </ListView>
                         </StackPanel>
                     </Border>
+
+                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="12">
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Text="Study recording" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBlock Text="Record screen + gaze locally for with/without Anchor comparison"
+                                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" Padding="10,6" CornerRadius="12" Background="#332E5CFF">
+                                    <TextBlock Text="{x:Bind ViewModel.RecordingElapsed, Mode=OneWay}" Foreground="#AFC1FF" />
+                                </Border>
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <TextBox Header="Participant code" Text="{x:Bind ViewModel.ParticipantCode, Mode=TwoWay}" PlaceholderText="P01 (pseudonym only)" />
+                                <ComboBox Grid.Column="1" Header="Trial mode" SelectedIndex="{x:Bind ViewModel.RecordingModeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="Baseline · interventions off" />
+                                    <ComboBoxItem Content="Anchor enabled" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBox Header="Output folder" Text="{x:Bind ViewModel.RecordingOutputFolder, Mode=TwoWay}" />
+                                <Button Grid.Column="1" Content="Choose…" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.ChooseRecordingFolderCommand}" />
+                            </Grid>
+                            <ToggleSwitch Header="Include webcam thumbnail" IsOn="{x:Bind ViewModel.WebcamRecordingConsent, Mode=TwoWay}"
+                                          IsEnabled="False" OffContent="Unavailable in this release" />
+                            <TextBlock Text="Display 1 · 15 FPS · audio off · gaze point and task state are composited into the MP4"
+                                       FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Start recording" Command="{x:Bind ViewModel.StartRecordingCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                <Button Content="Stop recording" Command="{x:Bind ViewModel.StopRecordingCommand}" />
+                                <Button Content="Open output folder" Command="{x:Bind ViewModel.OpenRecordingFolderCommand}" />
+                            </StackPanel>
+                            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
+                                     Message="{x:Bind ViewModel.RecordingStatus, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind ViewModel.LatestRecordingFiles, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                            <Button Content="Compare recordings" HorizontalAlignment="Left"
+                                    Command="{x:Bind ViewModel.CompareRecordingsCommand}" Style="{StaticResource AccentButtonStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.ComparisonReport, Mode=OneWay}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Spacing="16">

@@ -54,4 +54,5 @@ public sealed record StudySummary(
     double RecoverySeconds,
     int InterventionCount,
     int SchemaVersion = 1,
-    string? ManifestPath = null);
+    string? ManifestPath = null,
+    int SubtasksCompleted = 0);
