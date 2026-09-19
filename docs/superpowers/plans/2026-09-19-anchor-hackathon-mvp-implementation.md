@@ -144,7 +144,7 @@ Commit: `feat: add Anchor domain foundation`
 - Produces: `AttentionStateMachine.Update(SensorWindow) -> AttentionPrediction`.
 - Produces: `InterventionPolicy.Decide(AttentionPrediction, UserPreferences) -> InterventionDecision`.
 
-- [ ] **Step 1: Write state transition tests**
+- [x] **Step 1: Write state transition tests**
 
 ```csharp
 [Fact]
@@ -168,23 +168,23 @@ public void Relevance_score_is_bounded_for_any_title(string title)
 }
 ```
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run: `dotnet test tests/Anchor.Core.Tests/Anchor.Core.Tests.csproj --filter Attention`
 
-- [ ] **Step 3: Implement feature scoring and temporal hysteresis**
+- [x] **Step 3: Implement feature scoring and temporal hysteresis**
 
 Compute deterministic evidence from application relevance, idle duration, rapid switching, scroll loops, pointer wandering, typing continuity, gaze presence when available, and manual reports. Use 1 s, 5 s, and 30 s rolling summaries. Require sustained evidence to enter `Drifting` or `Distracted`, and stronger sustained positive evidence to return to `Focused`.
 
-- [ ] **Step 4: Implement explainable policy**
+- [x] **Step 4: Implement explainable policy**
 
 Map predictions to `None`, `BeaconPulse`, `VisualFilter`, `IntentionGate`, `RecoveryCard`, or `BreakSuggestion`. Include reason codes and a cooldown. Manual distraction reports bypass detector thresholds and immediately request recovery.
 
-- [ ] **Step 5: Add safety and false-positive tests**
+- [x] **Step 5: Add safety and false-positive tests**
 
 Test cooldowns, low confidence, repeated dismissals, manual overrides, secure-window suppression, and worker-unavailable predictions.
 
-- [ ] **Step 6: Run tests and commit**
+- [x] **Step 6: Run tests and commit**
 
 Commit: `feat: add deterministic attention and intervention engine`
 
