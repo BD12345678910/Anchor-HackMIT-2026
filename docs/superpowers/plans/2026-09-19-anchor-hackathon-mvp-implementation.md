@@ -92,11 +92,11 @@ scripts/run-demo.ps1
 - `GoalSession.Create(string title, DateTimeOffset startedAt) -> GoalSession`
 - `SensorWindow` contains only derived counts, durations, process metadata, and optional relevance hints.
 
-- [ ] **Step 1: Initialize Git and create the solution skeleton**
+- [x] **Step 1: Initialize Git and create the solution skeleton**
 
 Run the local .NET 10 SDK with a project-local `DOTNET_CLI_HOME`, create the solution and projects, and add project references. Add `.tools/`, `bin/`, `obj/`, `.venv/`, Python caches, browser build output, SQLite files, and generated gRPC files to `.gitignore`.
 
-- [ ] **Step 2: Write failing domain validation tests**
+- [x] **Step 2: Write failing domain validation tests**
 
 ```csharp
 [Fact]
@@ -115,15 +115,15 @@ public void Sensor_window_rejects_negative_counts()
 }
 ```
 
-- [ ] **Step 3: Verify the tests fail for missing models**
+- [x] **Step 3: Verify the tests fail for missing models**
 
 Run: `dotnet test tests/Anchor.Core.Tests/Anchor.Core.Tests.csproj`
 
-- [ ] **Step 4: Implement immutable validated models**
+- [x] **Step 4: Implement immutable validated models**
 
 Use records with constructor guards. Clamp free-text task titles to 240 Unicode scalar values, relevance/confidence values to `[0,1]`, and durations to non-negative values. Store keyboard activity as counts by category, never key values.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 Run: `dotnet test tests/Anchor.Core.Tests/Anchor.Core.Tests.csproj`
 
