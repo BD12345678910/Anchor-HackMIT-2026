@@ -37,6 +37,21 @@ public sealed class SessionOrchestratorTests
     }
 
     [Fact]
+    public async Task Manual_report_without_anchor_still_shows_current_subtask()
+    {
+        var fixture = new Fixture();
+        await fixture.Orchestrator.StartAsync("Solve three USACO problems");
+        fixture.Orchestrator.UpdateTaskContext("Solve problem 2", "Read the statement and identify inputs");
+
+        await fixture.Orchestrator.ReportDistractedAsync();
+
+        var presentation = Assert.Single(fixture.Presenter.Presentations);
+        Assert.Equal("manual_report", presentation.Decision.ReasonCode);
+        Assert.Equal("Solve problem 2", presentation.Capsule?.CurrentSubtask);
+        Assert.True(presentation.Capsule?.IsEstimatedContext);
+    }
+
+    [Fact]
     public async Task Missing_worker_keeps_session_in_deterministic_mode()
     {
         var fixture = new Fixture(workerAvailable: false);

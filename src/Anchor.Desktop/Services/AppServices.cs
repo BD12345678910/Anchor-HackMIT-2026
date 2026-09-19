@@ -51,8 +51,10 @@ public sealed class AppServices : IAsyncDisposable
         var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
         var worker = new InferenceWorkerClient(InferenceWorkerOptions.CreateDefault(repositoryRoot));
         var inference = new InferenceEngineAdapter(worker);
-        var sensors = new WindowsSensorCoordinator();
+        var browserContext = new BrowserContextTracker();
+        var sensors = new WindowsSensorCoordinator(browserContext);
         var browserBridge = new NativeBridgeServer(Path.Combine(appData, "bridge.json"));
+        browserBridge.MessageReceived += (_, message) => browserContext.Apply(message);
         browserBridge.Start();
         var overlays = new OverlayPresenter(browserBridge);
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);

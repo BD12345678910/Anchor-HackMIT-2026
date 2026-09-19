@@ -11,7 +11,11 @@ public sealed record ContextCapsule(
     string NextAction,
     string? SelectedText,
     string? RestoreTarget,
-    DistractionReason Reason);
+    DistractionReason Reason,
+    string CurrentSubtask = "",
+    string RelevanceReason = "",
+    DateTimeOffset? EvidenceTimestamp = null,
+    bool IsEstimatedContext = false);
 
 public enum DistractionReason
 {
@@ -32,4 +36,8 @@ public sealed record ContextObservation(
     string? SelectedText,
     string? RestoreTarget,
     double Confidence,
-    bool IsSensitiveField);
+    bool IsSensitiveField,
+    string CurrentSubtask = "",
+    string RelevanceReason = "",
+    DateTimeOffset? EvidenceTimestamp = null,
+    bool IsEstimatedContext = false);

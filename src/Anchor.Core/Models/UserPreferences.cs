@@ -18,5 +18,7 @@ public enum InterventionResponse
     Dismissed,
     ReturnedToTask,
     Snoozed,
-    Disabled
+    Disabled,
+    NeededForTask,
+    DeliberateBreak
 }

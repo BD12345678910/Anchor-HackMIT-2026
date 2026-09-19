@@ -31,6 +31,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     public string CurrentSubtask { get; set; } = "Choose the smallest next action";
     public string ProgressLabel { get; set; } = "0 of 1";
     public bool ReducedMotion { get; set; }
+    public Func<CancellationToken, Task<(string Step, string Source)>>? BreakdownProvider { get; set; }
+    public event EventHandler? CurrentWindowMarkedRelevant;
     public bool EnableVisualFilter { get; set; } = true;
     public bool EnablePointerGuard { get; set; }
     public bool HasRestrictiveOverlay =>
@@ -292,9 +294,14 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         _recovery = new RecoveryCardWindow();
         _recovery.SetContext(
             TaskTitle,
+            capsule?.CurrentSubtask ?? CurrentSubtask,
             capsule?.LastAction ?? "You were working on this task.",
             capsule?.NextAction ?? "Choose the smallest next action.",
-            reason);
+            reason,
+            capsule?.RelevanceReason ?? string.Empty,
+            capsule?.EvidenceTimestamp,
+            capsule?.IsEstimatedContext ?? true,
+            capsule?.RestoreTarget);
         _recovery.ReturnedToTask += (_, _) =>
         {
             App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.ReturnedToTask);
@@ -306,15 +313,42 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.Dismissed);
             Close(ref _recovery);
         };
+        _recovery.BreakRequested += (_, _) =>
+        {
+            App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.DeliberateBreak);
+            Close(ref _recovery);
+            Close(ref _filter);
+        };
+        _recovery.SmallerStepRequested += async (_, _) =>
+        {
+            var active = _recovery;
+            if (active is null) return;
+            try
+            {
+                var result = BreakdownProvider is null
+                    ? ($"open the task window, find the saved place, then {(capsule?.NextAction ?? "take one small action").ToLowerInvariant()}", "Local fallback")
+                    : await BreakdownProvider(CancellationToken.None);
+                if (ReferenceEquals(_recovery, active)) active.SetSmallerStep(result.Item1, result.Item2);
+            }
+            catch (Exception error)
+            {
+                if (ReferenceEquals(_recovery, active))
+                {
+                    active.SetSmallerStep(
+                        capsule?.NextAction ?? "Return to the active step and do its first visible action.",
+                        $"Local fallback · {error.GetType().Name}");
+                }
+            }
+        };
         _recovery.Activate();
-        OverlayWindowHelper.Center(_recovery, 720, 380);
+        OverlayWindowHelper.Center(_recovery, 860, 500);
     }
 
     private void ShowGate(string reason)
     {
         Close(ref _gate);
         _gate = new IntentionGateWindow();
-        _gate.SetPrompt(TaskTitle, reason);
+        _gate.SetPrompt(TaskTitle, CurrentSubtask, reason);
         _gate.ReturnedToTask += (_, _) =>
         {
             App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.ReturnedToTask);
@@ -340,6 +374,21 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.Disabled);
             ClearOverlays();
         };
+        _gate.NeededForTask += (_, _) =>
+        {
+            App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.NeededForTask);
+            CurrentWindowMarkedRelevant?.Invoke(this, EventArgs.Empty);
+            ReleasePointer();
+            Close(ref _gate);
+            Close(ref _filter);
+        };
+        _gate.DeliberateBreak += (_, _) =>
+        {
+            App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.DeliberateBreak);
+            ReleasePointer();
+            Close(ref _gate);
+            Close(ref _filter);
+        };
         _gate.LostFocus += (_, _) =>
         {
             if (_gate is not null)
@@ -348,7 +397,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             }
         };
         _gate.Activate();
-        OverlayWindowHelper.Center(_gate, 540, 320);
+        OverlayWindowHelper.Center(_gate, 780, 430);
         if (EnablePointerGuard)
         {
             var width = GetSystemMetrics(0);

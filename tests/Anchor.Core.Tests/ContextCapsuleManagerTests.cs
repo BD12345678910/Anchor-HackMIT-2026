@@ -58,6 +58,42 @@ public sealed class ContextCapsuleManagerTests
     }
 
     [Fact]
+    public void Capsule_keeps_subtask_relevance_and_evidence_timestamp()
+    {
+        var manager = new ContextCapsuleManager(Guid.NewGuid(), "Solve three USACO problems");
+        var observedAt = DateTimeOffset.Parse("2026-09-20T10:00:00Z");
+        manager.Observe(new ContextObservation(
+            "Browser", "USACO Guide", "Silver problem 2",
+            "Read the constraints", "Write the recurrence", null, "https://usaco.guide/problem/2",
+            0.9, false,
+            CurrentSubtask: "Solve problem 2",
+            RelevanceReason: "Matches the active subtask",
+            EvidenceTimestamp: observedAt));
+
+        var capsule = manager.Freeze(DistractionReason.ManualReport);
+
+        Assert.Equal("Solve problem 2", capsule.CurrentSubtask);
+        Assert.Equal("Matches the active subtask", capsule.RelevanceReason);
+        Assert.Equal(observedAt, capsule.EvidenceTimestamp);
+        Assert.False(capsule.IsEstimatedContext);
+    }
+
+    [Fact]
+    public void Estimated_capsule_is_available_when_no_safe_anchor_exists()
+    {
+        var manager = new ContextCapsuleManager(Guid.NewGuid(), "Solve three USACO problems");
+
+        var capsule = manager.FreezeOrEstimate(
+            DistractionReason.ManualReport,
+            "Solve problem 2",
+            "Open the statement and identify inputs");
+
+        Assert.True(capsule.IsEstimatedContext);
+        Assert.Equal("Solve problem 2", capsule.CurrentSubtask);
+        Assert.Equal("Open the statement and identify inputs", capsule.NextAction);
+    }
+
+    [Fact]
     public void Progress_tracker_counts_focus_interruptions_and_recovery_time()
     {
         var sessionId = Guid.NewGuid();

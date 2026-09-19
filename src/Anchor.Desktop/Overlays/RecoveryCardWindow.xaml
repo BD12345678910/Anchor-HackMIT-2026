@@ -10,13 +10,16 @@
             <Border Padding="14" Background="#241C2941" CornerRadius="12">
                 <StackPanel Spacing="8">
                     <TextBlock x:Name="TaskText" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SubtaskText" Foreground="#D2DAEE" TextWrapping="Wrap" />
                     <TextBlock x:Name="LastActionText" TextWrapping="Wrap" />
                     <TextBlock x:Name="NextActionText" Foreground="#AFC1FF" TextWrapping="Wrap" />
+                    <TextBlock x:Name="EvidenceText" FontSize="12" Foreground="#9EABC8" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <TextBlock Text="Context was preserved locally a moment ago." FontSize="12" Foreground="#9EABC8" />
+            <TextBlock x:Name="SourceText" Text="Context was preserved locally." FontSize="12" Foreground="#9EABC8" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                 <Button Content="Dismiss" Click="Dismiss_Click" />
+                <Button Content="Take a break" Click="Break_Click" />
                 <Button Content="Break down" Click="BreakDown_Click" />
                 <Button Content="Recap" Click="Recap_Click" />
                 <Button Content="Reopen" Click="Reopen_Click" />

@@ -4,11 +4,13 @@ using System.Threading.Channels;
 using Anchor.Core.Models;
 using Anchor.Core.Services;
 using Anchor.Infrastructure.Windows;
+using Anchor.Infrastructure.Browser;
 
 namespace Anchor_Desktop.Services;
 
 public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
 {
+    private readonly BrowserContextTracker? _browserContext;
     private Channel<DerivedEvent>? _events;
     private ForegroundWindowSensor? _foreground;
     private InputActivitySensor? _input;
@@ -16,6 +18,11 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
 
     public ChannelReader<DerivedEvent>? Events => _events?.Reader;
     public InputActivitySensor? Input => _input;
+
+    public WindowsSensorCoordinator(BrowserContextTracker? browserContext = null)
+    {
+        _browserContext = browserContext;
+    }
 
     public Task StartAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
@@ -89,22 +96,41 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
 
     public void ProcessRawInput(IntPtr rawInputHandle) => _input?.ProcessRawInput(rawInputHandle);
 
-    public ContextObservation CreateContextObservation(string taskTitle)
+    public ContextObservation CreateContextObservation(
+        string taskTitle,
+        string? currentSubtask = null,
+        string? relevanceReason = null,
+        double confidence = 0.7,
+        DateTimeOffset? evidenceTimestamp = null)
     {
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
         var title = GetFeature(foreground, "title");
         var secure = bool.TryParse(GetFeature(foreground, "secure_window"), out var isSecure) && isSecure;
+        var browser = IsBrowserProcess(process) ? _browserContext?.Snapshot() : null;
+        var browserIsFresh = browser is not null
+            && (evidenceTimestamp ?? DateTimeOffset.UtcNow) - browser.UpdatedAt <= TimeSpan.FromSeconds(30);
         return new ContextObservation(
             Application: string.IsNullOrWhiteSpace(process) ? "Desktop" : process,
-            DocumentIdentity: secure || string.IsNullOrWhiteSpace(title) ? "Private window" : title,
-            Location: "Current foreground window",
-            LastAction: $"Working toward: {taskTitle}",
+            DocumentIdentity: secure
+                ? "Private window"
+                : browserIsFresh
+                    ? browser!.Title
+                    : string.IsNullOrWhiteSpace(title) ? "Current window" : title,
+            Location: browserIsFresh
+                ? $"About {browser!.Progress:P0} through the page · paragraph {browser.ParagraphIndex + 1}"
+                : "Current foreground window",
+            LastAction: browserIsFresh && !string.IsNullOrWhiteSpace(browser!.StuckPhrase)
+                ? $"Paused near: {browser.StuckPhrase}"
+                : $"Working toward: {taskTitle}",
             NextAction: "Resume from the current window and take one small step.",
             SelectedText: null,
-            RestoreTarget: null,
-            Confidence: 0.7,
-            IsSensitiveField: secure);
+            RestoreTarget: browserIsFresh ? browser!.Origin : null,
+            Confidence: Math.Clamp(confidence, 0, 1),
+            IsSensitiveField: secure,
+            CurrentSubtask: currentSubtask ?? string.Empty,
+            RelevanceReason: relevanceReason ?? string.Empty,
+            EvidenceTimestamp: evidenceTimestamp ?? DateTimeOffset.UtcNow);
     }
 
     public TaskContext CreateTaskContext(
@@ -115,12 +141,13 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
         var title = GetFeature(foreground, "title");
+        var browser = IsBrowserProcess(process) ? _browserContext?.Snapshot() : null;
         return new TaskContext(
             goal,
             currentSubtask,
             string.IsNullOrWhiteSpace(process) ? "Desktop" : process,
-            string.IsNullOrWhiteSpace(title) ? null : title,
-            null,
+            browser?.Title ?? (string.IsNullOrWhiteSpace(title) ? null : title),
+            browser?.Origin,
             userRelevantTargets ?? []);
     }
 
@@ -159,6 +186,11 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         double.TryParse(GetFeature(item, key), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : 0;
+
+    private static bool IsBrowserProcess(string process) =>
+        process.Contains("chrome", StringComparison.OrdinalIgnoreCase)
+        || process.Contains("msedge", StringComparison.OrdinalIgnoreCase)
+        || process.Contains("firefox", StringComparison.OrdinalIgnoreCase);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();

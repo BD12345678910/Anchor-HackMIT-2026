@@ -29,12 +29,15 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _lastSecureWindow;
     private TaskSessionPlanner? _taskPlanner;
     private string? _plannedGoal;
+    private readonly HashSet<string> _userRelevantTargets = new(StringComparer.OrdinalIgnoreCase);
 
     public MainPageViewModel(AppServices services)
     {
         _services = services;
         _timer.Tick += Timer_Tick;
         _gazeTimer.Tick += GazeTimer_Tick;
+        _services.Overlays.CurrentWindowMarkedRelevant += Overlays_CurrentWindowMarkedRelevant;
+        _services.Overlays.BreakdownProvider = BreakDownRecoveryStepAsync;
     }
 
     public ObservableCollection<TimelineItem> Timeline { get; } = [];
@@ -232,7 +235,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _services.Overlays.EnablePointerGuard = PointerGuardEnabled;
             _services.Overlays.ReducedMotion = ReducedMotion;
             _services.Sensors.AttachWindow(App.WindowHandle);
-            _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(session.Title));
+            _services.Orchestrator.UpdateTaskContext(
+                taskState.Progress.CurrentStep?.Title,
+                taskState.Progress.CurrentStep?.CompletionCriterion);
+            _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(
+                session.Title,
+                taskState.Progress.CurrentStep?.Title,
+                "Session starting window",
+                evidenceTimestamp: DateTimeOffset.UtcNow));
             _services.Overlays.ShowBeacon();
             _services.Watchdog.Arm(DateTimeOffset.UtcNow);
             IsRunning = true;
@@ -268,6 +278,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         var state = _taskPlanner.MarkCurrentComplete(CompletionSource.User, DateTimeOffset.UtcNow);
         ApplyTaskPlanState(state);
         _services.Overlays.UpdateGoal(TaskTitle, state.Progress.CurrentStep?.Title, state.ProgressLabel);
+        _services.Orchestrator.UpdateTaskContext(
+            state.Progress.CurrentStep?.Title,
+            state.Progress.CurrentStep?.CompletionCriterion);
         _services.Overlays.ShowBeacon();
         AddTimeline("Step complete", completed);
         StatusMessage = state.Progress.CurrentStep is null
@@ -345,7 +358,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         IsBusy = true;
         try
         {
-            _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(TaskTitle));
             var prediction = await _services.Orchestrator.ReportDistractedAsync();
             ApplyPrediction(prediction);
             AddTimeline("Recovery requested", "Manual report bypassed automatic confidence thresholds");
@@ -527,6 +539,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _gazeTimer.Stop();
         _timer.Tick -= Timer_Tick;
         _gazeTimer.Tick -= GazeTimer_Tick;
+        _services.Overlays.CurrentWindowMarkedRelevant -= Overlays_CurrentWindowMarkedRelevant;
+        _services.Overlays.BreakdownProvider = null;
         if (IsGazeRunning)
         {
             await _services.Inference.StopGazeAsync();
@@ -550,7 +564,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             var now = DateTimeOffset.UtcNow;
             _services.Watchdog.Heartbeat(now);
             _services.Watchdog.CheckExpired(now);
-            _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(TaskTitle));
             var raw = _services.Sensors.Sample(
                 $"{TaskTitle} {CurrentSubtask}",
                 _services.Inference.IsAvailable,
@@ -567,12 +580,27 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             var context = _services.Sensors.CreateTaskContext(
                 TaskTitle,
                 CurrentSubtask,
-                TreatCurrentWindowAsRelevant && raw.AppRelevance > 0
-                    ? ["Current foreground window"]
-                    : []);
+                _userRelevantTargets.ToArray());
+            var userMarkedRelevant = TreatCurrentWindowAsRelevant
+                || _userRelevantTargets.Contains(ContextIdentity(context));
             var relevance = _taskPlanner is null
                 ? null
                 : await _taskPlanner.JudgeRelevanceAsync(context);
+            var contextIsSafe = !raw.IsSecureWindow
+                && (userMarkedRelevant
+                    || relevance?.Classification == RelevanceClass.Relevant
+                    || (relevance is null && raw.AppRelevance >= 0.65));
+            if (contextIsSafe)
+            {
+                _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(
+                    TaskTitle,
+                    CurrentSubtask,
+                    userMarkedRelevant
+                        ? "Marked relevant by the user"
+                        : relevance?.Reason ?? "Matched the active task",
+                    confidence: Math.Max(raw.AppRelevance, relevance?.Score ?? 0),
+                    evidenceTimestamp: now));
+            }
             var progressObserved = raw.KeyCount > 0
                 || raw.MouseDistance >= 4
                 || raw.ScrollReversalCount > 0;
@@ -583,7 +611,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 raw.IdleSeconds,
                 raw.AppRelevance,
                 relevance,
-                TreatCurrentWindowAsRelevant,
+                userMarkedRelevant,
                 gaze,
                 _services.Sensors.IsGazeOnForegroundWindow(gaze),
                 raw.AppSwitchCount,
@@ -682,6 +710,35 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 status));
         }
     }
+
+    private void Overlays_CurrentWindowMarkedRelevant(object? sender, EventArgs e)
+    {
+        var context = _services.Sensors.CreateTaskContext(TaskTitle, CurrentSubtask);
+        _userRelevantTargets.Add(ContextIdentity(context));
+        StatusMessage = "This window is now treated as needed for the current task.";
+        AddTimeline("Relevance corrected", context.WindowTitle ?? context.ProcessName);
+    }
+
+    private async Task<(string Step, string Source)> BreakDownRecoveryStepAsync(CancellationToken cancellationToken)
+    {
+        if (_taskPlanner?.Current?.Progress.CurrentStep is null)
+        {
+            return ("Choose one visible action that moves the task forward.", "Local fallback");
+        }
+        try
+        {
+            var context = _services.Sensors.CreateTaskContext(TaskTitle, CurrentSubtask, _userRelevantTargets.ToArray());
+            var step = await _taskPlanner.BreakDownCurrentStepAsync(context, cancellationToken);
+            return (step.Title, DeepSeekEnabled ? "DeepSeek breakdown" : "Local fallback");
+        }
+        catch
+        {
+            return (_taskPlanner.Current.Progress.CurrentStep.CompletionCriterion, "Local fallback");
+        }
+    }
+
+    private static string ContextIdentity(TaskContext context) =>
+        $"{context.ProcessName}|{context.Domain}|{context.WindowTitle}";
 
     private void AddTimeline(string label, string detail)
     {

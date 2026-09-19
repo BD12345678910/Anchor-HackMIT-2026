@@ -75,6 +75,7 @@ public sealed class InterventionPolicy
         {
             InterventionResponse.Dismissed => Math.Min(0.9, CurrentThreshold + 0.05),
             InterventionResponse.ReturnedToTask => Math.Max(0.55, CurrentThreshold - 0.02),
+            InterventionResponse.NeededForTask => Math.Max(0.55, CurrentThreshold - 0.02),
             InterventionResponse.Disabled => 1,
             _ => CurrentThreshold
         };

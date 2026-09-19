@@ -8,14 +8,23 @@
             <TextBlock Text="Is this where you meant to go?" FontSize="25" FontWeight="SemiBold" />
             <TextBlock x:Name="ReasonText" Foreground="#9EABC8" TextWrapping="Wrap" />
             <Border Padding="16" Background="#241C2941" CornerRadius="12">
-                <TextBlock x:Name="TaskText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <StackPanel Spacing="5">
+                    <TextBlock x:Name="TaskText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SubtaskText" Foreground="#AFC1FF" TextWrapping="Wrap" />
+                </StackPanel>
             </Border>
             <TextBlock Text="Anchor pauses the detour; it never closes your apps." Foreground="#9EABC8" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                <Button Content="Disable gates" Click="Disable_Click" />
-                <Button Content="Park for later" Click="Park_Click" />
-                <Button Content="Continue anyway" Click="Continue_Click" />
-                <Button Content="Return to task" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
+            <StackPanel Spacing="8" HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                    <Button Content="Disable gates" Click="Disable_Click" />
+                    <Button Content="Take a deliberate break" Click="Break_Click" />
+                    <Button Content="Park for later" Click="Park_Click" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                    <Button Content="This is needed for my task" Click="Needed_Click" />
+                    <Button Content="Continue anyway" Click="Continue_Click" />
+                    <Button Content="Return to task" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
             </StackPanel>
         </StackPanel>
     </Grid>

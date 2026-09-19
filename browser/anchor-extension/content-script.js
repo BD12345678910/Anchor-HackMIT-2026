@@ -217,6 +217,7 @@
     const tracker = createReadingTracker((event) => chrome.runtime.sendMessage({ source: "anchor-content", event }));
     let settings = { imageBlur: true, threshold: 0.62, futureTextMask: false, lookahead: 1, suppressAnimations: false };
     let currentParagraph = 0;
+    let lastProgressSentAt = 0;
 
     const apply = () => {
       if (settings.imageBlur) applyImageFiltering(document, { threshold: settings.threshold });
@@ -235,6 +236,14 @@
       const paragraphs = paragraphCandidates(document);
       const index = paragraphs.findIndex((item) => item.getBoundingClientRect().bottom > innerHeight * 0.45);
       currentParagraph = index < 0 ? Math.max(0, paragraphs.length - 1) : index;
+      const now = Date.now();
+      if (now - lastProgressSentAt >= 250) {
+        lastProgressSentAt = now;
+        chrome.runtime.sendMessage({
+          source: "anchor-content",
+          event: { type: "reading-progress", progress: scrollY / maximum, paragraphIndex: currentParagraph, timestamp: now },
+        });
+      }
       if (settings.futureTextMask) maskFutureText(document, currentParagraph, settings);
     }, { passive: true });
     addEventListener("pointerover", (event) => {

@@ -36,6 +36,8 @@ public sealed class SessionOrchestrator
     private readonly InterventionPolicy _policy;
     private ContextCapsuleManager? _capsules;
     private ProgressTracker? _progress;
+    private string _currentSubtask = string.Empty;
+    private string _plannedNextAction = string.Empty;
 
     public SessionOrchestrator(
         IEventStore store,
@@ -91,6 +93,13 @@ public sealed class SessionOrchestrator
         return session;
     }
 
+    public void UpdateTaskContext(string? currentSubtask, string? plannedNextAction)
+    {
+        EnsureRunning();
+        _currentSubtask = Bound(currentSubtask, 240);
+        _plannedNextAction = Bound(plannedNextAction, 500);
+    }
+
     public ContextCapsule? ObserveContext(ContextObservation observation)
     {
         EnsureRunning();
@@ -132,17 +141,12 @@ public sealed class SessionOrchestrator
             ContextCapsule? capsule = null;
             if (decision.Kind == InterventionKind.RecoveryCard)
             {
-                try
-                {
-                    capsule = _capsules!.Freeze(
-                        prediction.ReasonCodes.Contains("manual_report", StringComparer.Ordinal)
-                            ? DistractionReason.ManualReport
-                            : DistractionReason.IdleReturn);
-                }
-                catch (InvalidOperationException)
-                {
-                    // Recovery still works with the task title when no safe anchor exists.
-                }
+                capsule = _capsules!.FreezeOrEstimate(
+                    prediction.ReasonCodes.Contains("manual_report", StringComparer.Ordinal)
+                        ? DistractionReason.ManualReport
+                        : DistractionReason.IdleReturn,
+                    _currentSubtask,
+                    _plannedNextAction);
             }
 
             await _presenter.PresentAsync(decision, capsule, cancellationToken);
@@ -213,6 +217,8 @@ public sealed class SessionOrchestrator
                         _progress = null;
                         LastPrediction = null;
                         Progress = null;
+                        _currentSubtask = string.Empty;
+                        _plannedNextAction = string.Empty;
                     }
                 }
             }
@@ -238,4 +244,9 @@ public sealed class SessionOrchestrator
             await _inference.StopAsync();
         }
     }
+
+    private static string Bound(string? value, int maximum) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim()[..Math.Min(value.Trim().Length, maximum)];
 }
