@@ -379,23 +379,23 @@ Commit: `feat: add Anchor desktop experience`
 - Native messaging payloads contain URL origin, page title, selected-text summary, reading progress, image rectangles/salience, and user actions.
 - Content script accepts `setVisualFilter`, `setFutureTextMask`, `clearInterventions`, and `showRecoveryAnchor` commands.
 
-- [ ] **Step 1: Write DOM tests**
+- [x] **Step 1: Write DOM tests**
 
 Use Node’s built-in test runner with a minimal DOM fixture. Test image classification, future-text masking, restoration, mutation handling, excluded form/media elements, and idempotent cleanup.
 
-- [ ] **Step 2: Implement Manifest V3 least-privilege extension**
+- [x] **Step 2: Implement Manifest V3 least-privilege extension**
 
 Use `activeTab`, `storage`, `scripting`, and native messaging permissions. Do not request browsing history. Disable all content processing on password, payment, browser-internal, and user-denied origins.
 
-- [ ] **Step 3: Implement dynamic image filtering**
+- [x] **Step 3: Implement dynamic image filtering**
 
 Score visible images by area, animation, contrast proxy, viewport position, and task relevance hints. Apply CSS blur/desaturation only above the configured threshold and add a temporary reveal-on-hover affordance.
 
-- [ ] **Step 4: Implement reading support**
+- [x] **Step 4: Implement reading support**
 
 Track viewport progress, detect large forward skips, optionally mask future paragraphs, detect repeated dwell on one phrase, and send a recovery anchor without claiming medical diagnosis.
 
-- [ ] **Step 5: Test and commit**
+- [x] **Step 5: Test and commit**
 
 Run: `node --test browser/anchor-extension/tests/*.test.mjs`
 

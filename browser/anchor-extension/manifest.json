@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Anchor Focus Adapter",
+  "version": "0.1.0",
+  "description": "Optional page-level reading and visual focus support for the Anchor desktop assistant.",
+  "permissions": ["activeTab", "scripting", "storage", "nativeMessaging"],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "Enable Anchor on this page" },
+  "options_page": "options.html"
+}

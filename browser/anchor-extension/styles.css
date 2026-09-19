@@ -1,0 +1,14 @@
+:root { color-scheme: dark; font: 16px/1.5 "Segoe UI", system-ui, sans-serif; background: #101522; color: #f2f5ff; }
+body { margin: 0; }
+main { max-width: 680px; margin: 0 auto; padding: 48px 28px 72px; }
+.eyebrow { color: #8fa8ff; letter-spacing: .18em; font-weight: 700; margin: 0; }
+h1 { font-size: 2.25rem; margin: .25rem 0 .5rem; }
+.intro, label span { color: #aeb9d0; }
+section { background: #1a2233; border: 1px solid #2d3952; border-radius: 16px; padding: 22px; margin: 18px 0; display: grid; gap: 12px; }
+.toggle { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+input[type="range"] { width: 100%; accent-color: #7c9cff; }
+input[type="number"], textarea { background: #101522; color: inherit; border: 1px solid #41506f; border-radius: 9px; padding: 10px; }
+textarea { resize: vertical; }
+.actions { display: flex; align-items: center; gap: 14px; }
+button { border: 0; border-radius: 10px; padding: 11px 18px; color: white; background: #587aef; font-weight: 650; cursor: pointer; }
+#status { color: #9fb2ff; }
