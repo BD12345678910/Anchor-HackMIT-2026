@@ -68,6 +68,77 @@ public sealed class ScrollBehaviorTests
     }
 
     [Fact]
+    public void Scrolling_that_never_pauses_is_thrashing_even_below_flick_speed()
+    {
+        var analyzer = new ScrollBehaviorAnalyzer();
+
+        var behaviors = Enumerable.Range(0, 13)
+            .Select(tick => analyzer.Observe(Start.AddSeconds(tick), notches: 5, reversals: 0, keyCount: 0))
+            .ToArray();
+
+        Assert.False(behaviors[3].IsThrashing);
+        Assert.True(behaviors[^1].IsThrashing);
+        Assert.True(behaviors[^1].NotchesPerSecond < ScrollBehaviorAnalyzer.FastNotchesPerSecond);
+        Assert.Contains("without pausing", behaviors[^1].Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_same_amount_of_scrolling_with_reading_pauses_is_not_thrashing()
+    {
+        var analyzer = new ScrollBehaviorAnalyzer();
+
+        var behaviors = Enumerable.Range(0, 13)
+            .Select(tick => analyzer.Observe(
+                Start.AddSeconds(tick),
+                notches: tick % 3 == 0 ? 8 : 0,
+                reversals: 0,
+                keyCount: 0))
+            .ToArray();
+
+        Assert.All(behaviors, behavior => Assert.False(behavior.IsThrashing));
+    }
+
+    [Fact]
+    public void Paging_through_a_pdf_with_page_keys_counts_as_scrolling()
+    {
+        var fusion = new AttentionFusion();
+
+        var results = Enumerable.Range(0, 13)
+            .Select(tick => fusion.Apply(AttentionEvidence.At(
+                Start.AddSeconds(tick),
+                keyCount: 5,
+                adapterRelevance: 0.9,
+                progressObserved: true,
+                scrollNotchCount: 0,
+                navigationKeyCount: 5,
+                hasTextCaret: false)))
+            .ToArray();
+
+        Assert.Contains("scroll_thrash", results[^1].Prediction.ReasonCodes);
+    }
+
+    [Fact]
+    public void The_same_keys_in_an_editor_are_navigation_not_paging()
+    {
+        var fusion = new AttentionFusion();
+
+        var results = Enumerable.Range(0, 13)
+            .Select(tick => fusion.Apply(AttentionEvidence.At(
+                Start.AddSeconds(tick),
+                keyCount: 5,
+                adapterRelevance: 0.9,
+                progressObserved: true,
+                activity: ActivityKind.Coding,
+                scrollNotchCount: 0,
+                navigationKeyCount: 5,
+                hasTextCaret: true)))
+            .ToArray();
+
+        Assert.All(results, result =>
+            Assert.DoesNotContain("scroll_thrash", result.Prediction.ReasonCodes));
+    }
+
+    [Fact]
     public void Scrolling_while_typing_is_not_thrashing()
     {
         var analyzer = new ScrollBehaviorAnalyzer();

@@ -45,7 +45,7 @@ list is decorative.
 | On-screen text and pictures | `Windows.Media.Ocr` + screen capture, pictures graded by the vision model | Sentence/picture treatment and progress evidence |
 | Step progress | Screen evidence matched to the current step | Removes distraction evidence, auto-ticks the step |
 | Idle time | Raw input timestamps | Never evidence on its own — reading, watching and thinking all look idle. Only a still seat plus a camera that sees nobody reports `away_from_screen` |
-| Scrolling | Raw input wheel notches and direction flips | Fast/erratic scroll bursts; anchors the reminder to the page before the burst |
+| Scrolling | Raw input wheel notches, direction flips, and page keys where no text caret exists | Fast, erratic or unbroken scroll bursts; anchors the reminder to the page before the burst |
 | Mouse motion and clicks | Raw input path length, net displacement, direction changes, click rate | Travel far beyond what the work needs, aimless drift and click mashing |
 | Keyboard | Per-category key counts (letters, digits, navigation, editing, modifiers, function) — raw keys are never stored | Typing quality (gibberish) and random typing: bursts while the foreground window has no text caret and the screen text does not change |
 | Text caret presence | `GetGUIThreadInfo` on the foreground thread | Separates typing into an editor from typing into a page that accepts no input |

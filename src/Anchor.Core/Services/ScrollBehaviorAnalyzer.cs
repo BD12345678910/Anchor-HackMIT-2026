@@ -12,9 +12,11 @@ public sealed record ScrollBehavior(
     string Description);
 
 /// <summary>
-/// Detects fast or erratic scrolling — flicking through a PDF or a long page without stopping to
-/// read. Reading scrolls in bursts with pauses between them and rarely turns around; skimming past
-/// your place is continuous, fast, and often reverses direction while nothing is typed.
+/// Detects fast, erratic or unbroken scrolling — flicking through a PDF or a long page without
+/// stopping to read. Reading scrolls in bursts with pauses between them and rarely turns around;
+/// skimming past your place is continuous, fast, and often reverses direction while nothing is
+/// typed. Scrolling that never reaches the speed of a flick still counts once it never stops
+/// either: pages moving under the eye second after second with no pause is not reading.
 /// </summary>
 public sealed class ScrollBehaviorAnalyzer
 {
@@ -28,7 +30,16 @@ public sealed class ScrollBehaviorAnalyzer
     /// <summary>Typing means the scrolling is part of editing or note-taking, not skimming.</summary>
     public const int TypingKeyCount = 6;
 
+    /// <summary>A moderate rate is enough when the wheel never stops for this long.</summary>
+    public const double UnbrokenNotchesPerSecond = 4;
+
+    /// <summary>Share of the long window that must contain scrolling for it to count as unbroken.</summary>
+    public const double UnbrokenCoverage = 0.7;
+
     public static readonly TimeSpan Window = TimeSpan.FromSeconds(4);
+
+    /// <summary>Reading pauses show up over this span; a steady drag through a document does not.</summary>
+    public static readonly TimeSpan UnbrokenWindow = TimeSpan.FromSeconds(12);
 
     private readonly List<(DateTimeOffset At, int Notches, int Reversals, int Keys)> _samples = [];
     private DateTimeOffset? _startedAt;
@@ -40,22 +51,26 @@ public sealed class ScrollBehaviorAnalyzer
         ArgumentOutOfRangeException.ThrowIfNegative(keyCount);
 
         _samples.Add((at, notches, reversals, keyCount));
-        _samples.RemoveAll(sample => at - sample.At > Window);
+        _samples.RemoveAll(sample => at - sample.At > UnbrokenWindow);
 
-        var span = _samples.Count == 0 ? TimeSpan.Zero : at - _samples[0].At;
+        var recent = _samples.Where(sample => at - sample.At <= Window).ToList();
+        var span = recent.Count == 0 ? TimeSpan.Zero : at - recent[0].At;
         var seconds = Math.Max(span.TotalSeconds, 1);
-        var totalNotches = _samples.Sum(static sample => sample.Notches);
-        var totalReversals = _samples.Sum(static sample => sample.Reversals);
-        var totalKeys = _samples.Sum(static sample => sample.Keys);
+        var totalNotches = recent.Sum(static sample => sample.Notches);
+        var totalReversals = recent.Sum(static sample => sample.Reversals);
+        var totalKeys = recent.Sum(static sample => sample.Keys);
         var rate = totalNotches / seconds;
+
+        var unbroken = IsUnbroken(at, out var unbrokenRate);
 
         var thrashing = totalKeys < TypingKeyCount
             && (rate >= FastNotchesPerSecond
-                || (rate >= ErraticNotchesPerSecond && totalReversals >= ErraticReversals));
+                || (rate >= ErraticNotchesPerSecond && totalReversals >= ErraticReversals)
+                || unbroken);
 
         if (thrashing)
         {
-            _startedAt ??= _samples[0].At;
+            _startedAt ??= unbroken ? _samples[0].At : recent[0].At;
         }
         else
         {
@@ -65,10 +80,35 @@ public sealed class ScrollBehaviorAnalyzer
         var description = thrashing
             ? totalReversals >= ErraticReversals
                 ? $"scrolling back and forth ({rate:0.#} notches/s, {totalReversals} direction changes)"
-                : $"scrolling straight past the page ({rate:0.#} notches/s)"
+                : rate < FastNotchesPerSecond
+                    ? $"scrolling without pausing ({unbrokenRate:0.#} notches/s for {UnbrokenWindow.TotalSeconds:0}s)"
+                    : $"scrolling straight past the page ({rate:0.#} notches/s)"
             : $"{rate:0.#} notches/s";
 
         return new ScrollBehavior(thrashing, rate, totalReversals, _startedAt, description);
+    }
+
+    /// <summary>
+    /// True when the wheel has been turning through most of the long window at a steady rate with
+    /// no typing — the pattern of dragging a document past you rather than reading it.
+    /// </summary>
+    private bool IsUnbroken(DateTimeOffset at, out double rate)
+    {
+        rate = 0;
+        var span = at - _samples[0].At;
+        if (span < UnbrokenWindow - TimeSpan.FromSeconds(2))
+        {
+            return false;
+        }
+
+        if (_samples.Sum(static sample => sample.Keys) >= TypingKeyCount)
+        {
+            return false;
+        }
+
+        var scrolled = _samples.Count(static sample => sample.Notches > 0);
+        rate = _samples.Sum(static sample => sample.Notches) / Math.Max(span.TotalSeconds, 1);
+        return scrolled >= _samples.Count * UnbrokenCoverage && rate >= UnbrokenNotchesPerSecond;
     }
 
     public void Reset()

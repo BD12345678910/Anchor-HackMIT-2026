@@ -158,9 +158,14 @@ public sealed class AttentionFusion
             _noProgressSince ??= evidence.Timestamp;
         }
 
+        // Page Up / Page Down move a PDF exactly like the wheel does. They only count as paging
+        // where there is nothing to type into; in an editor the same keys are navigation inside
+        // the work itself.
+        var pagingKeys = evidence.HasTextCaret == true ? 0 : evidence.NavigationKeyCount;
+
         var scroll = _scroll.Observe(
             evidence.Timestamp,
-            evidence.ScrollNotchCount,
+            evidence.ScrollNotchCount + pagingKeys,
             evidence.ScrollReversalCount,
             // Page-up/page-down are scrolling, not writing: only real typing means the user is
             // working in the document rather than flicking through it.
