@@ -220,8 +220,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial int RecordingModeIndex { get; set; } = 1;
     [ObservableProperty] public partial string RecordingOutputFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Anchor Studies");
-    [ObservableProperty] public partial bool WebcamRecordingConsent { get; set; }
     [ObservableProperty] public partial bool IsRecording { get; set; }
+    [ObservableProperty] public partial string EvidenceRecordingFolder { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Anchor Evidence");
+    [ObservableProperty] public partial string EvidenceRecordingStatus { get; set; } =
+        "Not recording · one MP4 holds the screen, your eyes and the attention verdict.";
     [ObservableProperty] public partial string RecordingStatus { get; set; } = "Ready · screen and gaze stay local";
     [ObservableProperty] public partial string RecordingElapsed { get; set; } = "00:00";
     [ObservableProperty] public partial string LatestRecordingFiles { get; set; } = "No recording created yet";
@@ -1175,6 +1178,53 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         Process.Start(new ProcessStartInfo(WebcamRecordingFolder) { UseShellExecute = true });
     }
 
+    [RelayCommand]
+    private void OpenEvidenceRecordingFolder()
+    {
+        Directory.CreateDirectory(EvidenceRecordingFolder);
+        Process.Start(new ProcessStartInfo(EvidenceRecordingFolder) { UseShellExecute = true });
+    }
+
+    [RelayCommand]
+    private async Task StartEvidenceRecordingAsync()
+    {
+        if (IsRecording)
+        {
+            EvidenceRecordingStatus = "A recording is already running.";
+            return;
+        }
+        EvidenceRecordingStatus = "Starting…";
+        var result = await _services.Recording.StartAsync(
+            EvidenceRecordingFolder,
+            TrialMode.AnchorEnabled,
+            "demo",
+            fps: 15);
+        if (result.Manifest is null)
+        {
+            EvidenceRecordingStatus = $"Could not start recording: {result.Error}";
+            return;
+        }
+        IsRecording = true;
+        RecordingElapsed = "00:00";
+        LatestRecordingFiles = result.Manifest.VideoPath;
+        RecordingStatus = "REC · evidence clip";
+        EvidenceRecordingStatus = IsGazeRunning
+            ? $"REC · screen + eyes + rating → {result.Manifest.VideoPath}"
+            : $"REC · camera is closed, so the clip shows the screen and the rating only → {result.Manifest.VideoPath}";
+        _recordingTimer.Start();
+        AddTimeline("Evidence recording started", result.Manifest.TrialId);
+    }
+
+    [RelayCommand]
+    private async Task StopEvidenceRecordingAsync()
+    {
+        var path = _services.Recording.CurrentManifest?.VideoPath;
+        await StopRecordingAsync();
+        EvidenceRecordingStatus = path is null
+            ? "Not recording."
+            : $"{RecordingStatus} · saved {path}";
+    }
+
     private static string Describe(TimeSpan elapsed) =>
         elapsed.TotalMinutes >= 1 ? $"{elapsed:mm\\:ss}" : $"{elapsed.TotalSeconds:0.0} s";
 
@@ -1513,7 +1563,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _recordingTickInFlight = true;
         try
         {
-            var gaze = _sessionGazeActive ? await _services.Inference.ReadGazeAsync() : null;
+            var gaze = _sessionGazeActive || IsGazeRunning ? await _services.Inference.ReadGazeAsync() : null;
             var prediction = _services.Orchestrator.LastPrediction
                 ?? AttentionPrediction.Create(Anchor.Core.Models.AttentionState.Focused, 0.5, 0, ["awaiting_first_sample"]);
             var status = await _services.Recording.AppendSampleAsync(

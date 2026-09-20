@@ -139,7 +139,7 @@ public sealed class InferenceWorkerClientTests
         Assert.NotNull(started.Manifest);
         Assert.Equal("recording_already_active", duplicate.Error);
         await client.AppendRecordingSampleAsync(new StudyRecordingSample(
-            50, 0.5, 0.5, 0.9, true, "focused", 0.1, "Test task", "Test step"));
+            50, 0.5, 0.5, 0.9, true, "focused", 0.1, 0.8, "Test task", "Test step"));
         await client.AppendRecordingEventAsync(new Dictionary<string, object?>
         {
             ["type"] = "intervention",

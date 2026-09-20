@@ -40,6 +40,7 @@ public sealed record StudyRecordingSample(
     bool FacePresent,
     string AttentionState,
     double DistractionProbability,
+    double AttentionConfidence,
     string Task,
     string Subtask);
 

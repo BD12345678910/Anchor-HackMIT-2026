@@ -321,6 +321,24 @@
                                 </Border>
                                 <Border Padding="12" CornerRadius="12" Background="#241C2941">
                                     <StackPanel Spacing="8">
+                                        <Grid>
+                                            <TextBlock Text="Record the evidence clip" FontWeight="SemiBold" />
+                                            <Border HorizontalAlignment="Right" Padding="10,4" CornerRadius="12" Background="#332E5CFF">
+                                                <TextBlock Text="{x:Bind ViewModel.RecordingElapsed, Mode=OneWay}" Foreground="#AFC1FF" FontSize="12" />
+                                            </Border>
+                                        </Grid>
+                                        <TextBlock Text="One MP4 with the screen, the camera view with your eyes enlarged, and the live attention state, distraction rating and confidence — what you need to show the effect on a participant." Style="{StaticResource Hint}" TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Record screen + eyes + rating" Command="{x:Bind ViewModel.StartEvidenceRecordingCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                            <Button Content="Stop" Command="{x:Bind ViewModel.StopEvidenceRecordingCommand}" />
+                                            <Button Content="Open folder" Command="{x:Bind ViewModel.OpenEvidenceRecordingFolderCommand}" />
+                                        </StackPanel>
+                                        <TextBox Header="Save to" Text="{x:Bind ViewModel.EvidenceRecordingFolder, Mode=TwoWay}" />
+                                        <TextBlock Text="{x:Bind ViewModel.EvidenceRecordingStatus, Mode=OneWay}" Style="{StaticResource Hint}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Padding="12" CornerRadius="12" Background="#241C2941">
+                                    <StackPanel Spacing="8">
                                         <TextBlock Text="Calibrate by clicking" FontWeight="SemiBold" />
                                         <TextBlock Text="A dot appears across the screen: look at it and click it. Your eye geometry at the moment of each click is paired with that position, then fitted to your screen." Style="{StaticResource Hint}" TextWrapping="Wrap" />
                                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -433,9 +451,7 @@
                                     <TextBox Header="Output folder" Text="{x:Bind ViewModel.RecordingOutputFolder, Mode=TwoWay}" />
                                     <Button Grid.Column="1" Content="Choose…" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.ChooseRecordingFolderCommand}" />
                                 </Grid>
-                                <ToggleSwitch Header="Include webcam thumbnail" IsOn="{x:Bind ViewModel.WebcamRecordingConsent, Mode=TwoWay}"
-                                              IsEnabled="False" OffContent="Unavailable in this release" />
-                                <TextBlock Text="Display 1 · 15 FPS · audio off · gaze point and task state are composited into the MP4" Style="{StaticResource Hint}" />
+                                <TextBlock Text="Display 1 · 15 FPS · audio off · the MP4 carries the gaze point, the attention state with its distraction rating and confidence, and — when the camera is open — the camera view with the eyes enlarged." Style="{StaticResource Hint}" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button Content="Start recording" Command="{x:Bind ViewModel.StartRecordingCommand}" Style="{StaticResource AccentButtonStyle}" />
                                     <Button Content="Stop" Command="{x:Bind ViewModel.StopRecordingCommand}" />

@@ -518,6 +518,7 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             ["face_present"] = sample.FacePresent,
             ["attention_state"] = sample.AttentionState,
             ["distraction_probability"] = sample.DistractionProbability,
+            ["attention_confidence"] = sample.AttentionConfidence,
             ["task"] = sample.Task,
             ["subtask"] = sample.Subtask
         });

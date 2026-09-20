@@ -86,6 +86,12 @@ class GazeController:
             return GazeSample(None, None, 0.0, False, 0)
         return self._tracker.read()
 
+    def eye_panel(self, width: int = 420):
+        """Camera view plus enlarged eyes, or None when the camera is not open."""
+        if self._tracker is None or not self._tracker.is_running:
+            return None
+        return self._tracker.eye_panel(width)
+
     @property
     def calibration_target_count(self) -> int:
         return len({tuple(round(v, 3) for v in item.target) for item in self._calibration_samples})

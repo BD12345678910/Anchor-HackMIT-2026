@@ -305,6 +305,7 @@ class CameraGazeTracker:
         self._stop = Event()
         self._lock = Lock()
         self._latest = GazeSample(None, None, 0.0, False, 0)
+        self._latest_frame: Any = None
         self._recent: Deque[tuple[int, tuple[float, ...]]] = deque(maxlen=self.HISTORY_FRAMES)
         self._writer: Any = None
         self._recording_path = ""
@@ -440,6 +441,21 @@ class CameraGazeTracker:
         with self._lock:
             return self._latest
 
+    def eye_panel(self, width: int = 420) -> Optional[Any]:
+        """The camera view with both eyes enlarged underneath it, for the evidence recording."""
+        with self._lock:
+            frame = self._latest_frame
+            sample = self._latest
+        if frame is None or self._cv2 is None:
+            return None
+        return build_eye_panel(
+            self._cv2,
+            frame,
+            sample,
+            width,
+            mirror=self._configuration.mirror,
+        )
+
     def process_frame(self, frame: Any, timestamp_ms: int) -> GazeSample:
         if self._detector is None:
             raise RuntimeError("gaze detector is not initialized")
@@ -495,6 +511,8 @@ class CameraGazeTracker:
                 sample = self.process_frame(frame, timestamp_ms)
                 sample = replace(sample, preview_jpeg=self._encode_preview(frame, sample))
                 self._write_recording_frame(frame)
+                with self._lock:
+                    self._latest_frame = frame
             with self._lock:
                 self._latest = sample
 
@@ -544,52 +562,95 @@ class CameraGazeTracker:
     def _append_eye_strip(self, frame: Any, preview: Any, sample: GazeSample) -> Any:
         """Adds a strip under the preview with each eye enlarged and its iris centre marked,
         so the user can see exactly what the gaze estimate is built from."""
-        cv2 = self._cv2
-        assert cv2 is not None
-        frame_height, frame_width = frame.shape[:2]
-        preview_width = preview.shape[1]
-        strip_height = max(48, preview_width // 6)
-        crops = []
-        for eye in sample.eyes:
-            x0 = max(0, int(eye.left * frame_width))
-            y0 = max(0, int(eye.top * frame_height))
-            x1 = min(frame_width, int((eye.left + eye.width) * frame_width))
-            y1 = min(frame_height, int((eye.top + eye.height) * frame_height))
-            if x1 - x0 < 4 or y1 - y0 < 4:
-                continue
-            crop = frame[y0:y1, x0:x1].copy()
-            crop_height, crop_width = crop.shape[:2]
-            scale = strip_height / crop_height
-            crop = cv2.resize(
-                crop,
-                (max(1, int(crop_width * scale)), strip_height),
-                interpolation=cv2.INTER_CUBIC,
-            )
-            cv2.circle(
-                crop,
-                (
-                    int((eye.iris_x * frame_width - x0) * scale),
-                    int((eye.iris_y * frame_height - y0) * scale),
-                ),
-                max(3, strip_height // 12),
-                (80, 210, 120),
-                2,
-            )
-            if self._configuration.mirror:
-                crop = cv2.flip(crop, 1)
-            crops.append(crop)
-        if not crops:
-            return preview
-        if self._configuration.mirror:
-            crops.reverse()
-        strip = np.zeros((strip_height, preview_width, 3), dtype=preview.dtype)
-        gap = 8
-        total = sum(crop.shape[1] for crop in crops) + gap * (len(crops) - 1)
-        offset = max(0, (preview_width - total) // 2)
-        for crop in crops:
-            width = min(crop.shape[1], preview_width - offset)
-            if width <= 0:
-                break
-            strip[:, offset : offset + width] = crop[:, :width]
-            offset += width + gap
-        return np.vstack((preview, strip))
+        assert self._cv2 is not None
+        strip = eye_strip(
+            self._cv2,
+            frame,
+            sample,
+            preview.shape[1],
+            max(48, preview.shape[1] // 6),
+            mirror=self._configuration.mirror,
+        )
+        return preview if strip is None else np.vstack((preview, strip))
+
+
+def eye_strip(
+    cv2: Any,
+    frame: Any,
+    sample: GazeSample,
+    width: int,
+    height: int,
+    *,
+    mirror: bool,
+) -> Optional[Any]:
+    """Both eyes cropped from the frame, enlarged to `height` and laid side by side on a
+    `width` strip, each with its iris centre marked."""
+    frame_height, frame_width = frame.shape[:2]
+    crops = []
+    for eye in sample.eyes:
+        x0 = max(0, int(eye.left * frame_width))
+        y0 = max(0, int(eye.top * frame_height))
+        x1 = min(frame_width, int((eye.left + eye.width) * frame_width))
+        y1 = min(frame_height, int((eye.top + eye.height) * frame_height))
+        if x1 - x0 < 4 or y1 - y0 < 4:
+            continue
+        crop = frame[y0:y1, x0:x1].copy()
+        crop_height, crop_width = crop.shape[:2]
+        scale = height / crop_height
+        crop = cv2.resize(
+            crop,
+            (max(1, int(crop_width * scale)), height),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        cv2.circle(
+            crop,
+            (
+                int((eye.iris_x * frame_width - x0) * scale),
+                int((eye.iris_y * frame_height - y0) * scale),
+            ),
+            max(3, height // 12),
+            (80, 210, 120),
+            2,
+        )
+        if mirror:
+            crop = cv2.flip(crop, 1)
+        crops.append(crop)
+    if not crops:
+        return None
+    if mirror:
+        crops.reverse()
+    strip = np.zeros((height, width, 3), dtype=frame.dtype)
+    gap = 8
+    total = sum(crop.shape[1] for crop in crops) + gap * (len(crops) - 1)
+    offset = max(0, (width - total) // 2)
+    for crop in crops:
+        crop_width = min(crop.shape[1], width - offset)
+        if crop_width <= 0:
+            break
+        strip[:, offset : offset + crop_width] = crop[:, :crop_width]
+        offset += crop_width + gap
+    return strip
+
+
+def build_eye_panel(
+    cv2: Any,
+    frame: Any,
+    sample: GazeSample,
+    width: int,
+    *,
+    mirror: bool,
+) -> Any:
+    """The camera image scaled to `width` with the enlarged eyes stacked underneath it."""
+    frame_height, frame_width = frame.shape[:2]
+    scale = width / max(1, frame_width)
+    thumbnail = cv2.resize(
+        frame,
+        (width, max(1, int(frame_height * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
+    if mirror:
+        thumbnail = cv2.flip(thumbnail, 1)
+    strip = eye_strip(cv2, frame, sample, width, max(64, width // 4), mirror=mirror)
+    if strip is None:
+        return thumbnail
+    return np.vstack((thumbnail, strip))
