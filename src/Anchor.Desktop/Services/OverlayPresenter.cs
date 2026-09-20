@@ -220,6 +220,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     // background is dismissed, since Windows may never have let it take focus.
                     if (++_focusedTicks >= 2 && _previewTimer is null && !gateInFront)
                     {
+                        ReleasePointer();
                         Close(ref _gate);
                         Close(ref _firewall);
                         Close(ref _filter);
