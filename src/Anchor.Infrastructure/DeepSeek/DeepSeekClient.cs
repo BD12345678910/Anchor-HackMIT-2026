@@ -275,11 +275,13 @@ public sealed class DeepSeekClient : ITaskIntelligence
         var prompt = $$"""
             Return JSON with this exact shape:
             {"headline":"<= 60 chars, 'You were ...'","whereYouWere":"1-2 sentences, concrete","resumeWith":"one imperative sentence"}
-            A student with ADHD got distracted. Write the reminder that brings them back to exactly where they were.
+            A student with ADHD got distracted. The facts below describe the task-relevant work they were doing
+            BEFORE the distraction (not the distraction itself); the reminder must bring them back to exactly that spot.
             Adapt to the activity: for reading quote the last sentence they were on; for coding name the file and the
             code they were editing; for writing quote their last sentence; for problem solving name the problem and
-            sub-step; for browsing say which page and what they were looking for. Use only the facts below, quote screen
-            text verbatim when you quote, never invent content. Warm, brief, no emojis.
+            sub-step; for browsing say which page and what they were looking for; for a video or lecture name it and
+            the timestamp to resume from. Use only the facts below, quote screen text verbatim when you quote, never
+            invent content, never tell them to close the application or page they were working in. Warm, brief, no emojis.
             Task: {{Bound(capsule.TaskTitle, 240)}}
             Active step: {{Bound(capsule.CurrentSubtask, 240)}}
             Activity: {{ActivityClassifier.Describe(capsule.Activity)}}
