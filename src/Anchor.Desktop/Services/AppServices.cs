@@ -50,6 +50,31 @@ public sealed class AppServices : IAsyncDisposable
     public string DataDirectory { get; }
     public ToolPreferencesStore Preferences { get; }
 
+    /// <summary>Appends a line to attention.log; only active when ANCHOR_TRACE is set.</summary>
+    public void Trace(string message)
+    {
+        if (!TraceEnabled)
+        {
+            return;
+        }
+        try
+        {
+            Directory.CreateDirectory(DataDirectory);
+            File.AppendAllText(
+                Path.Combine(DataDirectory, "attention.log"),
+                $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static readonly bool TraceEnabled =
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ANCHOR_TRACE"));
+
     public void LogError(string context, Exception error)
     {
         try
