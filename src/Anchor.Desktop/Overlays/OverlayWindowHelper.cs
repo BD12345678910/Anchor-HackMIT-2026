@@ -67,6 +67,8 @@ internal static class OverlayWindowHelper
         ConfigurePresenter(appWindow, hideBorder: false);
 
         var workArea = GetActiveWorkArea(handle);
+        width = Math.Min(width, Math.Max(320, workArea.Width - 32));
+        height = Math.Min(height, Math.Max(240, workArea.Height - 32));
         appWindow.MoveAndResize(new RectInt32(
             workArea.X + Math.Max(0, (workArea.Width - width) / 2),
             workArea.Y + Math.Max(0, (workArea.Height - height) / 2),

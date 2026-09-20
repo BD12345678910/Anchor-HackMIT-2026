@@ -5,6 +5,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Anchor overlay">
     <Grid Background="#F7182030" Padding="28" RequestedTheme="Dark">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Spacing="14">
             <TextBlock x:Name="HeadlineText" Text="Let's restore your place" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock x:Name="ReasonText" Foreground="#9EABC8" TextWrapping="Wrap" />
@@ -25,15 +30,16 @@
                     <TextBlock x:Name="EvidenceText" FontSize="12" Foreground="#9EABC8" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <TextBlock x:Name="SourceText" Text="Context was preserved locally." FontSize="12" Foreground="#9EABC8" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                <Button Content="Dismiss" Click="Dismiss_Click" />
-                <Button Content="Take a break" Click="Break_Click" />
-                <Button Content="Break down" Click="BreakDown_Click" />
-                <Button Content="Recap" Click="Recap_Click" />
-                <Button Content="Reopen" Click="Reopen_Click" />
-                <Button Content="Resume" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
-            </StackPanel>
+            <TextBlock x:Name="SourceText" Text="Context was preserved locally." FontSize="12" Foreground="#9EABC8" TextWrapping="Wrap" />
+        </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
+            <Button Content="Dismiss" Click="Dismiss_Click" />
+            <Button Content="Take a break" Click="Break_Click" />
+            <Button Content="Break down" Click="BreakDown_Click" />
+            <Button Content="Recap" Click="Recap_Click" />
+            <Button Content="Reopen" Click="Reopen_Click" />
+            <Button Content="Resume" Click="Return_Click" Style="{StaticResource AccentButtonStyle}" />
         </StackPanel>
     </Grid>
 </Window>

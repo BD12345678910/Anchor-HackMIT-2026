@@ -36,6 +36,8 @@ public sealed class SessionOrchestrator
     private readonly InterventionPolicy _policy;
     private ContextCapsuleManager? _capsules;
     private ProgressTracker? _progress;
+    private readonly SemaphoreSlim _processGate = new(1, 1);
+    private DateTimeOffset _lastEventTimestamp = DateTimeOffset.MinValue;
     private string _currentSubtask = string.Empty;
     private string _plannedNextAction = string.Empty;
 
@@ -89,6 +91,7 @@ public sealed class SessionOrchestrator
         CurrentSession = session;
         _capsules = new ContextCapsuleManager(session.Id, session.Title);
         _progress = new ProgressTracker(session.Id);
+        _lastEventTimestamp = DateTimeOffset.MinValue;
         await _store.AppendAsync(
             DerivedEvent.Create(session.Id, session.StartedAt, "session", "started"),
             cancellationToken);
@@ -115,11 +118,31 @@ public sealed class SessionOrchestrator
         EnsureRunning();
         cancellationToken.ThrowIfCancellationRequested();
 
+        await _processGate.WaitAsync(cancellationToken);
+        try
+        {
+            EnsureRunning();
+            return await ProcessLockedAsync(window, cancellationToken);
+        }
+        finally
+        {
+            _processGate.Release();
+        }
+    }
+
+    private async Task<AttentionPrediction> ProcessLockedAsync(
+        SensorWindow window,
+        CancellationToken cancellationToken)
+    {
         var prediction = await _inference.PredictAsync(window, cancellationToken);
         LastPrediction = prediction;
+        // A slow sensing tick (OCR, cloud relevance) can finish after a manual report that was
+        // stamped later; the progress log must stay monotonic, so late windows take the last time.
+        var timestamp = window.Timestamp < _lastEventTimestamp ? _lastEventTimestamp : window.Timestamp;
+        _lastEventTimestamp = timestamp;
         var attentionEvent = DerivedEvent.Create(
             CurrentSession!.Id,
-            window.Timestamp,
+            timestamp,
             "attention",
             prediction.State.ToString().ToLowerInvariant(),
             new Dictionary<string, string>
@@ -158,7 +181,7 @@ public sealed class SessionOrchestrator
             await _store.AppendAsync(
                 DerivedEvent.Create(
                     CurrentSession.Id,
-                    window.Timestamp,
+                    timestamp,
                     "intervention",
                     decision.Kind.ToString().ToLowerInvariant(),
                     new Dictionary<string, string> { ["reason"] = decision.ReasonCode }),

@@ -498,7 +498,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             }
         };
         _recovery.Activate();
-        OverlayWindowHelper.Center(_recovery, 860, 500);
+        OverlayWindowHelper.Center(_recovery, 860, 640);
     }
 
     private async Task UpgradeReminderAsync(RecoveryCardWindow card, ContextCapsule capsule)

@@ -21,6 +21,9 @@ public static class ActivityClassifier
     private static readonly string[] EditorTitleHints =
         ["visual studio", "vs code", "jupyter", "colab", "replit", "codesandbox", "stackblitz", "overleaf"];
     private static readonly string[] DocumentTitleHints = ["google docs", "docs.google", "word", ".docx", "overleaf", "notion", "- notes"];
+    private static readonly string[] ArticleTitleHints =
+        ["wikipedia", "arxiv", "britannica", "medium.com", "substack", "documentation", "docs.", "tutorial", "guide", "chapter", "lecture", "textbook", "article", "paper", "encyclopedia", "readthedocs", "mdn", "stack overflow", "pubmed", "jstor"];
+    private static readonly string[] SearchTitleHints = ["google search", "- search", "bing", "duckduckgo", "search results", "new tab", "google.com"];
 
     public static ActivityKind Infer(
         string? processName,
@@ -66,7 +69,12 @@ public static class ActivityClassifier
                 return ActivityKind.Writing;
             }
 
-            return scrolling ? ActivityKind.Reading : ActivityKind.Browsing;
+            if (SearchTitleHints.Any(title.Contains))
+            {
+                return ActivityKind.Browsing;
+            }
+
+            return scrolling || ArticleTitleHints.Any(title.Contains) ? ActivityKind.Reading : ActivityKind.Browsing;
         }
 
         if (typing)

@@ -15,7 +15,9 @@ public sealed class ScreenContextTests
     [InlineData("WINWORD", "essay.docx - Word", 25, 0, ActivityKind.Writing)]
     [InlineData("chrome", "Photosynthesis - Wikipedia", 0, 4, ActivityKind.Reading)]
     [InlineData("chrome", "Photosynthesis - Wikipedia", 30, 0, ActivityKind.Writing)]
-    [InlineData("chrome", "Photosynthesis - Wikipedia", 0, 0, ActivityKind.Browsing)]
+    [InlineData("chrome", "Photosynthesis - Wikipedia", 0, 0, ActivityKind.Reading)]
+    [InlineData("chrome", "photosynthesis - Google Search", 0, 0, ActivityKind.Browsing)]
+    [InlineData("chrome", "Best laptops 2026 | Some Store", 0, 0, ActivityKind.Browsing)]
     public void ActivityClassifier_uses_process_title_and_input_pattern(
         string process, string title, int keys, int reversals, ActivityKind expected)
     {
