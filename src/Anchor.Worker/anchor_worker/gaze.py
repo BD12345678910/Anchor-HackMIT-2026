@@ -92,6 +92,8 @@ class LandmarkGazeEstimator:
     _LEFT_IRIS = tuple(range(468, 473))
     _RIGHT_IRIS = tuple(range(473, 478))
     _EYE_MARGIN = 0.6
+    _OPEN_EYE_RATIO = 0.18
+    """Lid gap over eye width at which an eye counts as fully open; a relaxed eye is ~0.33."""
     # Iris offsets are a fraction of eye width; before calibration replaces the mapping, the
     # horizontal offset is used as-is (corner to corner spans the screen) and the vertical one
     # is scaled by the usual eye width / lid gap ratio.
@@ -110,10 +112,12 @@ class LandmarkGazeEstimator:
         if not landmarks or not self._has_required_landmarks(landmarks):
             return GazeSample(None, None, 0.0, False, timestamp_ms)
 
-        left_open = self._distance_y(landmarks, *self._LEFT_LIDS)
-        right_open = self._distance_y(landmarks, *self._RIGHT_LIDS)
-        openness = min(left_open, right_open)
-        confidence = max(0.0, min(0.98, openness / 0.05))
+        left = self._eye(landmarks, self._LEFT_CORNERS, self._LEFT_LIDS, self._LEFT_IRIS)
+        right = self._eye(landmarks, self._RIGHT_CORNERS, self._RIGHT_LIDS, self._RIGHT_IRIS)
+        # Openness is the lid gap as a fraction of that eye's own width, so a face further from
+        # the camera or a lower-resolution sensor does not read as closed eyes.
+        openness = min(left[1].openness, right[1].openness)
+        confidence = max(0.0, min(0.98, openness / self._OPEN_EYE_RATIO))
         if confidence < 0.35:
             return GazeSample(
                 None,
@@ -126,8 +130,6 @@ class LandmarkGazeEstimator:
                 roll,
             )
 
-        left = self._eye(landmarks, self._LEFT_CORNERS, self._LEFT_LIDS, self._LEFT_IRIS)
-        right = self._eye(landmarks, self._RIGHT_CORNERS, self._RIGHT_LIDS, self._RIGHT_IRIS)
         left_x, left_y = left[0]
         right_x, right_y = right[0]
         mean_x = (left_x + right_x) / 2.0
@@ -179,12 +181,14 @@ class LandmarkGazeEstimator:
         dy = iris[1] - centre_y
         along = (dx * ux + dy * uy) / width
         across = (-dx * uy + dy * ux) / width
-        openness = self._distance_y(landmarks, *lids) / width
+        openness = self._distance(landmarks, *lids) / width
         margin = width * self._EYE_MARGIN
+        # Sized from the corner-to-corner distance rather than its horizontal component, so a
+        # tilted head still gets a crop that holds the whole eye.
         region = EyeRegion(
-            left=min(float(first[0]), float(second[0])) - margin * 0.5,
+            left=centre_x - (width + margin) / 2.0,
             top=centre_y - margin,
-            width=abs(ax) + margin,
+            width=width + margin,
             height=margin * 2.0,
             iris_x=iris[0],
             iris_y=iris[1],
@@ -212,8 +216,11 @@ class LandmarkGazeEstimator:
         )
 
     @staticmethod
-    def _distance_y(landmarks: Landmarks, top: int, bottom: int) -> float:
-        return abs(float(landmarks[bottom][1]) - float(landmarks[top][1]))
+    def _distance(landmarks: Landmarks, top: int, bottom: int) -> float:
+        """Lid gap measured across the eye, so tilting the head does not read as a closing eye."""
+        dx = float(landmarks[bottom][0]) - float(landmarks[top][0])
+        dy = float(landmarks[bottom][1]) - float(landmarks[top][1])
+        return (dx * dx + dy * dy) ** 0.5
 
     @staticmethod
     def _clamp(value: float) -> float:
