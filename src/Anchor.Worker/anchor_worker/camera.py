@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import asdict, dataclass, replace
 import json
 from pathlib import Path
 from threading import Event, Lock, Thread
 import time
-from typing import Any, Optional, Protocol
+from typing import Any, Deque, Optional, Protocol
 
 import numpy as np
 
@@ -13,10 +14,20 @@ from .calibration import CalibrationInvalidatedError, CalibrationModel
 from .gaze import (
     GazeConfiguration,
     GazeSample,
+    GazeSmoother,
     GazeTransform,
     LandmarkGazeEstimator,
     Landmarks,
 )
+
+
+@dataclass(frozen=True)
+class WebcamRecordingStatus:
+    recording: bool
+    video_path: str
+    frame_count: int
+    elapsed_seconds: float
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -125,6 +136,10 @@ class CameraDeviceProbe:
 class GazeSettingsStore:
     def __init__(self, path: Path | str) -> None:
         self._path = Path(path)
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     def load(self) -> GazeConfiguration:
         if not self._path.exists():
@@ -283,20 +298,37 @@ class CameraGazeTracker:
         self._display_signature = display_signature
         self._estimator = LandmarkGazeEstimator()
         self._transform = GazeTransform(configuration)
+        self._smoother = GazeSmoother(configuration.smoothing)
         self._capture: Any = None
         self._cv2: Any = None
         self._thread: Optional[Thread] = None
         self._stop = Event()
         self._lock = Lock()
         self._latest = GazeSample(None, None, 0.0, False, 0)
+        self._recent: Deque[tuple[int, tuple[float, ...]]] = deque(maxlen=self.HISTORY_FRAMES)
+        self._writer: Any = None
+        self._recording_path = ""
+        self._recording_started = 0.0
+        self._recording_frames = 0
+        self._recording_error = ""
+
+    HISTORY_FRAMES = 60
+    # Eye-ratio spread (across frames in the sampling window) above which the user was not
+    # holding a fixation, so the click cannot be trusted as ground truth.
+    MAX_FIXATION_SPREAD = 0.06
 
     @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    @property
+    def is_calibrated(self) -> bool:
+        return self._calibration is not None
+
     def configure(self, configuration: GazeConfiguration) -> None:
         self._configuration = configuration
         self._transform.update(configuration)
+        self._smoother.update(configuration.smoothing)
 
     def set_calibration(
         self,
@@ -305,6 +337,75 @@ class CameraGazeTracker:
     ) -> None:
         self._calibration = calibration
         self._display_signature = display_signature
+        self._smoother.reset()
+
+    def sample_fixation(self, window_ms: int = 400, min_frames: int = 3) -> tuple[float, ...]:
+        """Averages the raw gaze features seen during the last `window_ms` (the moment the user
+        clicked a calibration target). Refuses when too few confident frames exist or the eyes
+        were moving, so an unsteady click never enters the fit."""
+        with self._lock:
+            latest_ms = self._recent[-1][0] if self._recent else 0
+            frames = [features for at, features in self._recent if latest_ms - at <= window_ms]
+        if len(frames) < min_frames:
+            raise RuntimeError(
+                "no steady gaze was seen at the moment of the click; look at the target and click again"
+            )
+        matrix = np.asarray(frames, dtype=np.float64)
+        spread = float(np.max(np.ptp(matrix[:, :4], axis=0)))
+        if spread > self.MAX_FIXATION_SPREAD:
+            raise RuntimeError(
+                "eyes were still moving when you clicked; hold your gaze on the target, then click"
+            )
+        return tuple(float(value) for value in np.median(matrix, axis=0))
+
+    def start_recording(self, output_directory: str) -> WebcamRecordingStatus:
+        if not self.is_running or self._capture is None or self._cv2 is None:
+            raise RuntimeError("open the webcam before recording")
+        with self._lock:
+            if self._writer is not None:
+                return self._recording_status_locked()
+            directory = Path(output_directory)
+            directory.mkdir(parents=True, exist_ok=True)
+            width = int(self._capture.get(self._cv2.CAP_PROP_FRAME_WIDTH)) or 640
+            height = int(self._capture.get(self._cv2.CAP_PROP_FRAME_HEIGHT)) or 480
+            fps = float(self._capture.get(self._cv2.CAP_PROP_FPS)) or 0.0
+            if not 5.0 <= fps <= 60.0:
+                fps = 20.0
+            path = directory / time.strftime("webcam-%Y%m%d-%H%M%S.mp4")
+            writer = self._cv2.VideoWriter(
+                str(path), self._cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height)
+            )
+            if not writer.isOpened():
+                raise RuntimeError(f"could not create {path}")
+            self._writer = writer
+            self._recording_path = str(path)
+            self._recording_started = time.monotonic()
+            self._recording_frames = 0
+            self._recording_error = ""
+            return self._recording_status_locked()
+
+    def stop_recording(self) -> WebcamRecordingStatus:
+        with self._lock:
+            status = self._recording_status_locked()
+            if self._writer is not None:
+                self._writer.release()
+                self._writer = None
+            return replace(status, recording=False)
+
+    def recording_status(self) -> WebcamRecordingStatus:
+        with self._lock:
+            return self._recording_status_locked()
+
+    def _recording_status_locked(self) -> WebcamRecordingStatus:
+        recording = self._writer is not None
+        elapsed = time.monotonic() - self._recording_started if self._recording_path else 0.0
+        return WebcamRecordingStatus(
+            recording,
+            self._recording_path,
+            self._recording_frames,
+            elapsed,
+            self._recording_error,
+        )
 
     def start(self) -> None:
         if self.is_running:
@@ -350,23 +451,31 @@ class CameraGazeTracker:
             pitch=pitch,
             roll=roll,
         )
-        adjusted = self._transform.apply(raw)
-        if adjusted.available and self._calibration is not None:
-            try:
-                x, y = self._calibration.apply(
-                    (float(adjusted.x), float(adjusted.y), yaw, pitch),
-                    self._display_signature,
-                )
-                adjusted = replace(adjusted, x=x, y=y)
-            except CalibrationInvalidatedError:
-                self._calibration = None
-        return adjusted
+        if raw.available and raw.confidence >= self._configuration.min_confidence:
+            with self._lock:
+                self._recent.append((timestamp_ms, raw.features))
+        if self._calibration is None:
+            return self._transform.apply(raw)
+
+        # Calibrated path: the fitted mapping replaces mirror/offset/sensitivity entirely, since
+        # it learned screen coordinates directly from raw iris ratios and head pose.
+        if not raw.available or raw.confidence < self._configuration.min_confidence:
+            self._smoother.reset()
+            return replace(raw, x=None, y=None)
+        try:
+            x, y = self._calibration.apply(raw.features, self._display_signature)
+        except CalibrationInvalidatedError:
+            self._calibration = None
+            return self._transform.apply(raw)
+        x, y = self._smoother.apply(x, y)
+        return replace(raw, x=x, y=y)
 
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+        self.stop_recording()
         if self._capture is not None:
             self._capture.release()
             self._capture = None
@@ -385,8 +494,26 @@ class CameraGazeTracker:
             else:
                 sample = self.process_frame(frame, timestamp_ms)
                 sample = replace(sample, preview_jpeg=self._encode_preview(frame, sample))
+                self._write_recording_frame(frame)
             with self._lock:
                 self._latest = sample
+
+    def _write_recording_frame(self, frame: Any) -> None:
+        with self._lock:
+            writer = self._writer
+        if writer is None:
+            return
+        try:
+            writer.write(frame)
+            with self._lock:
+                if self._writer is writer:
+                    self._recording_frames += 1
+        except Exception as error:  # noqa: BLE001 - surfaced through status
+            with self._lock:
+                self._recording_error = str(error)
+                if self._writer is writer:
+                    self._writer = None
+            writer.release()
 
     def _encode_preview(self, frame: Any, sample: GazeSample) -> bytes:
         if self._cv2 is None:
@@ -409,5 +536,60 @@ class CameraGazeTracker:
                 (80, 210, 120),
                 3,
             )
+        if sample.eyes:
+            preview = self._append_eye_strip(frame, preview, sample)
         success, encoded = self._cv2.imencode(".jpg", preview)
         return encoded.tobytes() if success else b""
+
+    def _append_eye_strip(self, frame: Any, preview: Any, sample: GazeSample) -> Any:
+        """Adds a strip under the preview with each eye enlarged and its iris centre marked,
+        so the user can see exactly what the gaze estimate is built from."""
+        cv2 = self._cv2
+        assert cv2 is not None
+        frame_height, frame_width = frame.shape[:2]
+        preview_width = preview.shape[1]
+        strip_height = max(48, preview_width // 6)
+        crops = []
+        for eye in sample.eyes:
+            x0 = max(0, int(eye.left * frame_width))
+            y0 = max(0, int(eye.top * frame_height))
+            x1 = min(frame_width, int((eye.left + eye.width) * frame_width))
+            y1 = min(frame_height, int((eye.top + eye.height) * frame_height))
+            if x1 - x0 < 4 or y1 - y0 < 4:
+                continue
+            crop = frame[y0:y1, x0:x1].copy()
+            crop_height, crop_width = crop.shape[:2]
+            scale = strip_height / crop_height
+            crop = cv2.resize(
+                crop,
+                (max(1, int(crop_width * scale)), strip_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            cv2.circle(
+                crop,
+                (
+                    int((eye.iris_x * frame_width - x0) * scale),
+                    int((eye.iris_y * frame_height - y0) * scale),
+                ),
+                max(3, strip_height // 12),
+                (80, 210, 120),
+                2,
+            )
+            if self._configuration.mirror:
+                crop = cv2.flip(crop, 1)
+            crops.append(crop)
+        if not crops:
+            return preview
+        if self._configuration.mirror:
+            crops.reverse()
+        strip = np.zeros((strip_height, preview_width, 3), dtype=preview.dtype)
+        gap = 8
+        total = sum(crop.shape[1] for crop in crops) + gap * (len(crops) - 1)
+        offset = max(0, (preview_width - total) // 2)
+        for crop in crops:
+            width = min(crop.shape[1], preview_width - offset)
+            if width <= 0:
+                break
+            strip[:, offset : offset + width] = crop[:, :width]
+            offset += width + gap
+        return np.vstack((preview, strip))

@@ -29,13 +29,17 @@ public sealed record RelevanceJudgment(
     bool IsFallback,
     DateTimeOffset ExpiresAt);
 
-/// <summary>One picture on screen, described by the text around it, for semantic grading.</summary>
+/// <summary>
+/// One picture on screen, described by the text around it and, when the capture is available,
+/// a small JPEG thumbnail (as a data URL) so a vision model can judge the pixels themselves.
+/// </summary>
 public sealed record PictureDescriptor(
     string Key,
     string NearbyText,
     bool AdShaped,
     int Width,
-    int Height);
+    int Height,
+    string? ThumbnailDataUrl = null);
 
 public sealed record PictureGradingRequest(
     string Goal,
@@ -57,6 +61,35 @@ public enum PictureRelevance
 
 public sealed record PictureGrading(
     IReadOnlyDictionary<string, PictureRelevance> Verdicts,
+    string Source,
+    bool IsFallback);
+
+/// <summary>One passage of on-screen text (a paragraph, list, card or nav block) in window-local pixels.</summary>
+public sealed record TextBlockDescriptor(
+    string Key,
+    string Text,
+    double Left,
+    double Top,
+    double Width,
+    double Height);
+
+public sealed record TextGradingRequest(
+    string Goal,
+    string CurrentSubtask,
+    string ProcessName,
+    string? WindowTitle,
+    IReadOnlyList<TextBlockDescriptor> Blocks);
+
+public enum TextRelevance
+{
+    /// <summary>Part of what the user is studying: leave it readable.</summary>
+    OnTask,
+    /// <summary>Navigation, related links, comments, promos or another topic: dim it.</summary>
+    OffTask
+}
+
+public sealed record TextGrading(
+    IReadOnlyDictionary<string, TextRelevance> Verdicts,
     string Source,
     bool IsFallback);
 

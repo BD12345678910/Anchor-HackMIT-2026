@@ -191,6 +191,89 @@ public sealed class DeepSeekClientTests
     }
 
     [Fact]
+    public async Task GradePicturesAsync_sends_the_pixels_to_the_vision_model_when_thumbnails_exist()
+    {
+        var handler = new CapturingHandler(_ => JsonResponse(
+            """Here you go: ```json {"pictures":[{"index":1,"verdict":"illustrates"},{"index":2,"verdict":"bait"}]} ```"""));
+        var client = CreateClient(handler);
+        var cat = new PictureDescriptor("cat", "", false, 300, 200, "data:image/jpeg;base64,AAAA");
+        var promo = new PictureDescriptor("promo", "", true, 728, 90, "data:image/jpeg;base64,BBBB");
+        var request = new PictureGradingRequest("Learn about cats", "Read Behaviour", "chrome", "Cat - Wikipedia", "", [cat, promo]);
+
+        var grading = await client.GradePicturesAsync(request, CancellationToken.None);
+
+        Assert.False(grading.IsFallback);
+        Assert.Equal("DeepSeek vision", grading.Source);
+        Assert.Equal(PictureRelevance.Illustrates, grading.Verdicts["cat"]);
+        Assert.Equal(PictureRelevance.Bait, grading.Verdicts["promo"]);
+        Assert.Contains($"\"model\":\"{DeepSeekClient.VisionModel}\"", handler.LastBody);
+        Assert.Contains("image_url", handler.LastBody);
+        Assert.Contains("data:image/jpeg;base64,AAAA", handler.LastBody);
+        Assert.Contains("\"detail\":\"low\"", handler.LastBody);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GradePicturesAsync_retries_with_captions_when_the_vision_model_is_unavailable()
+    {
+        var handler = new CapturingHandler(request =>
+            request.Content!.ReadAsStringAsync().Result.Contains("image_url", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : JsonResponse("""{"pictures":[{"index":1,"verdict":"unrelated"}]}"""));
+        var client = CreateClient(handler);
+        var harbour = new PictureDescriptor("harbour", "A harbour at dusk", false, 300, 200, "data:image/jpeg;base64,AAAA");
+        var request = new PictureGradingRequest("Learn about cats", "Read Behaviour", "chrome", "Cat - Wikipedia", "", [harbour]);
+
+        var grading = await client.GradePicturesAsync(request, CancellationToken.None);
+
+        Assert.False(grading.IsFallback);
+        Assert.StartsWith("DeepSeek text", grading.Source);
+        Assert.Equal(PictureRelevance.Unrelated, grading.Verdicts["harbour"]);
+        Assert.DoesNotContain("image_url", handler.LastBody);
+        Assert.Contains("harbour at dusk", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task GradeTextBlocksAsync_dims_only_off_task_passages_and_caches_per_page()
+    {
+        var handler = new CapturingHandler(_ => JsonResponse(
+            """{"blocks":[{"index":1,"verdict":"on_task"},{"index":2,"verdict":"off_task"}]}"""));
+        var client = CreateClient(handler);
+        var article = new TextBlockDescriptor("b1", "The cat is a small domesticated carnivorous mammal.", 100, 100, 400, 40);
+        var rail = new TextBlockDescriptor("b2", "Trending: celebrity gossip and shopping deals", 700, 400, 260, 40);
+        var request = new TextGradingRequest("Learn about cats", "Read Behaviour", "chrome", "Cat - Wikipedia", [article, rail]);
+
+        var grading = await client.GradeTextBlocksAsync(request, CancellationToken.None);
+        var again = await client.GradeTextBlocksAsync(request, CancellationToken.None);
+
+        Assert.False(grading.IsFallback);
+        Assert.Equal("DeepSeek", grading.Source);
+        Assert.Equal(TextRelevance.OnTask, grading.Verdicts["b1"]);
+        Assert.Equal(TextRelevance.OffTask, grading.Verdicts["b2"]);
+        Assert.Contains("celebrity gossip", handler.LastBody);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(TextRelevance.OffTask, again.Verdicts["b2"]);
+    }
+
+    [Fact]
+    public async Task GradeTextBlocksAsync_leaves_text_readable_when_deepseek_fails_or_is_unconfigured()
+    {
+        var block = new TextBlockDescriptor("b1", "Trending: celebrity gossip and shopping deals", 700, 400, 260, 40);
+        var request = new TextGradingRequest("Learn about cats", "Read Behaviour", "chrome", "Cat - Wikipedia", [block]);
+        var failing = await CreateClient(new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)))
+            .GradeTextBlocksAsync(request, CancellationToken.None);
+        var noKeyHandler = new CapturingHandler(_ => throw new InvalidOperationException("must not be called"));
+        var noKey = await new DeepSeekClient(new HttpClient(noKeyHandler), string.Empty).GradeTextBlocksAsync(request, CancellationToken.None);
+
+        Assert.True(failing.IsFallback);
+        Assert.StartsWith("Local rules", failing.Source);
+        Assert.Equal(TextRelevance.OnTask, failing.Verdicts["b1"]);
+        Assert.True(noKey.IsFallback);
+        Assert.Equal(TextRelevance.OnTask, noKey.Verdicts["b1"]);
+        Assert.Equal(0, noKeyHandler.RequestCount);
+    }
+
+    [Fact]
     public async Task Missing_key_returns_local_fallback_without_network_request()
     {
         var handler = new CapturingHandler(_ => throw new InvalidOperationException("Network must not run."));

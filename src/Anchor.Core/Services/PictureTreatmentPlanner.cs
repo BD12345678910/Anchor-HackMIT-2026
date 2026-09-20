@@ -38,15 +38,19 @@ public static class PictureTreatmentPlanner
     private const double RailShare = 0.28;
     public const int MaxNearbyChars = 220;
 
-    public static PictureDescriptor Describe(PixelRect region, PictureSceneContext context)
+    /// <param name="pixelHash">Perceptual hash of the picture's pixels, when the capture is available; makes the key follow the picture rather than its caption.</param>
+    /// <param name="thumbnailDataUrl">Small JPEG of the picture as a data URL for vision grading.</param>
+    public static PictureDescriptor Describe(PixelRect region, PictureSceneContext context, string? pixelHash = null, string? thumbnailDataUrl = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         var nearby = Bound(string.Join(' ', NearbyText(region, context.Lines)), MaxNearbyChars);
         var adShaped = LooksLikeAd(region, context.WindowWidth, context.WindowHeight);
-        var key = nearby.Length > 0
+        var key = !string.IsNullOrEmpty(pixelHash)
+            ? "pix:" + pixelHash
+            : nearby.Length > 0
             ? "text:" + Hash(Normalize(nearby))
             : $"shape:{SizeBucket(region.Width)}x{SizeBucket(region.Height)}:{(adShaped ? "ad" : "content")}";
-        return new PictureDescriptor(key, nearby, adShaped, region.Width, region.Height);
+        return new PictureDescriptor(key, nearby, adShaped, region.Width, region.Height, thumbnailDataUrl);
     }
 
     /// <summary>Treatment for a picture given the window verdict and, when known, its semantic verdict.</summary>

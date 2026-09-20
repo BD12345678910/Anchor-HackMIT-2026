@@ -1,6 +1,7 @@
-import pytest
+﻿import pytest
 
 from anchor_worker.gaze import (
+    FEATURE_NAMES,
     GazeConfiguration,
     GazeSample,
     GazeTransform,
@@ -106,3 +107,35 @@ def test_transform_smooths_valid_samples_and_rejects_low_confidence():
     assert second.y == pytest.approx(0.45)
     assert unavailable.x is None
     assert unavailable.y is None
+
+
+def _shift(landmarks, dx: float, dy: float):
+    return {index: (x + dx, y + dy, z) for index, (x, y, z) in landmarks.items()}
+
+
+def test_eye_features_ignore_where_the_face_is_in_the_frame():
+    estimator = LandmarkGazeEstimator()
+
+    centred = estimator.estimate(_face_landmarks(iris_x=0.7, iris_y=0.4), timestamp_ms=1)
+    moved = estimator.estimate(
+        _shift(_face_landmarks(iris_x=0.7, iris_y=0.4), dx=0.2, dy=-0.15), timestamp_ms=2
+    )
+
+    assert moved.features == pytest.approx(centred.features, abs=1e-9)
+    assert moved.x == pytest.approx(centred.x)
+    assert moved.y == pytest.approx(centred.y)
+    assert len(centred.features) == len(FEATURE_NAMES)
+    assert "face_x" not in FEATURE_NAMES
+
+
+def test_eye_regions_follow_each_eye_and_mark_the_iris():
+    sample = LandmarkGazeEstimator().estimate(_face_landmarks(iris_x=0.8), timestamp_ms=1)
+
+    assert len(sample.eyes) == 2
+    left, right = sample.eyes
+    assert left.left <= 0.30 and left.left + left.width >= 0.45
+    assert right.left <= 0.55 and right.left + right.width >= 0.70
+    assert left.top <= left.iris_y <= left.top + left.height
+    assert left.iris_x == pytest.approx(0.42, abs=1e-6)
+    assert right.iris_x == pytest.approx(0.67, abs=1e-6)
+    assert left.openness == pytest.approx(0.4, abs=1e-6)

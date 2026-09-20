@@ -2,6 +2,9 @@ using Anchor.Core.Models;
 
 namespace Anchor.Core.Services;
 
+/// <summary>Where the user's attention went during distractions: one app or site, how often it pulled them away and how long it kept them.</summary>
+public sealed record Distractor(string Name, int Episodes, TimeSpan TimeLost);
+
 public sealed record AttentionAnalysis(
     int Samples,
     int FocusBouts,
@@ -14,10 +17,12 @@ public sealed record AttentionAnalysis(
     double OnTaskShare,
     IReadOnlyList<KeyValuePair<string, int>> Triggers,
     IReadOnlyList<KeyValuePair<InterventionKind, int>> Interventions,
-    string Trend)
+    string Trend,
+    IReadOnlyList<Distractor> Distractors,
+    TimeSpan TimeLost)
 {
     public static AttentionAnalysis Empty { get; } = new(
-        0, 0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, 0, 0, TimeSpan.Zero, 0, [], [], "Not enough data yet");
+        0, 0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, 0, 0, TimeSpan.Zero, 0, [], [], "Not enough data yet", [], TimeSpan.Zero);
 }
 
 /// <summary>
@@ -27,7 +32,7 @@ public sealed record AttentionAnalysis(
 /// </summary>
 public sealed class AttentionAnalyzer
 {
-    private readonly List<(DateTimeOffset At, AttentionState State, string[] Reasons)> _samples = [];
+    private readonly List<(DateTimeOffset At, AttentionState State, string[] Reasons, string? Place)> _samples = [];
     private readonly Dictionary<InterventionKind, int> _interventions = [];
 
     public void Reset()
@@ -36,7 +41,8 @@ public sealed class AttentionAnalyzer
         _interventions.Clear();
     }
 
-    public void Record(DateTimeOffset at, AttentionPrediction prediction)
+    /// <param name="place">Where the user was at this moment (site domain, else the app), used to rank what distracts them most.</param>
+    public void Record(DateTimeOffset at, AttentionPrediction prediction, string? place = null)
     {
         ArgumentNullException.ThrowIfNull(prediction);
         if (_samples.Count > 0 && at < _samples[^1].At)
@@ -44,7 +50,22 @@ public sealed class AttentionAnalyzer
             at = _samples[^1].At;
         }
 
-        _samples.Add((at, prediction.State, prediction.ReasonCodes.ToArray()));
+        _samples.Add((at, prediction.State, prediction.ReasonCodes.ToArray(), string.IsNullOrWhiteSpace(place) ? null : place.Trim()));
+    }
+
+    /// <summary>The label used for a foreground context: the site when it is a browser page, otherwise the application.</summary>
+    public static string? DescribePlace(string? processName, string? domain)
+    {
+        if (!string.IsNullOrWhiteSpace(domain))
+        {
+            return domain.Trim().ToLowerInvariant();
+        }
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            return null;
+        }
+        var name = processName.Trim();
+        return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
     }
 
     public void RecordIntervention(InterventionDecision decision)
@@ -71,6 +92,10 @@ public sealed class AttentionAnalyzer
         var onTask = TimeSpan.Zero;
         var total = TimeSpan.Zero;
         var distractions = 0;
+        var lost = TimeSpan.Zero;
+        var placeTime = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
+        var placeEpisodes = new Dictionary<string, int>(StringComparer.Ordinal);
+        string? episodePlace = null;
 
         DateTimeOffset? boutStart = _samples[0].State == AttentionState.Focused ? _samples[0].At : null;
         DateTimeOffset? distractionStart = null;
@@ -84,6 +109,20 @@ public sealed class AttentionAnalyzer
             if (IsOnTask(previous.State))
             {
                 onTask += delta;
+            }
+            else if (previous.State == AttentionState.Distracted)
+            {
+                lost += delta;
+                var place = previous.Place ?? current.Place;
+                if (place is not null)
+                {
+                    placeTime[place] = placeTime.GetValueOrDefault(place) + delta;
+                    if (!string.Equals(episodePlace, place, StringComparison.Ordinal))
+                    {
+                        placeEpisodes[place] = placeEpisodes.GetValueOrDefault(place) + 1;
+                        episodePlace = place;
+                    }
+                }
             }
 
             if (current.State == AttentionState.Focused && boutStart is null)
@@ -111,6 +150,10 @@ public sealed class AttentionAnalyzer
                 recoveries.Add(current.At - distractionStart.Value);
                 distractionStart = null;
             }
+            if (current.State != AttentionState.Distracted)
+            {
+                episodePlace = null;
+            }
         }
 
         var openBout = boutStart is null || now < boutStart.Value ? TimeSpan.Zero : now - boutStart.Value;
@@ -129,7 +172,14 @@ public sealed class AttentionAnalyzer
             total > TimeSpan.Zero ? onTask / total : 0,
             triggers.OrderByDescending(static pair => pair.Value).ThenBy(static pair => pair.Key, StringComparer.Ordinal).ToArray(),
             _interventions.OrderByDescending(static pair => pair.Value).ThenBy(static pair => pair.Key).ToArray(),
-            DescribeTrend(bouts));
+            DescribeTrend(bouts),
+            placeTime
+                .Select(pair => new Distractor(pair.Key, placeEpisodes.GetValueOrDefault(pair.Key), pair.Value))
+                .OrderByDescending(static item => item.TimeLost)
+                .ThenByDescending(static item => item.Episodes)
+                .ThenBy(static item => item.Name, StringComparer.Ordinal)
+                .ToArray(),
+            lost);
     }
 
     private static bool IsOnTask(AttentionState state) =>

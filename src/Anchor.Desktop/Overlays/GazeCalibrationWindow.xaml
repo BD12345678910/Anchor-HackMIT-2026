@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Anchor_Desktop.Overlays.GazeCalibrationWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Anchor gaze calibration">
+    <Grid x:Name="Root" Background="#F2070B12" RequestedTheme="Dark" PointerPressed="Root_PointerPressed">
+        <Canvas x:Name="Surface">
+            <Ellipse x:Name="Halo" Width="96" Height="96" Fill="#3348D1FF" />
+            <Ellipse x:Name="Target" Width="34" Height="34" Fill="#FF48D1FF" Stroke="#FFFFFFFF" StrokeThickness="2" />
+            <Ellipse x:Name="Pupil" Width="10" Height="10" Fill="#FF070B12" />
+        </Canvas>
+        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,48,0,0" Spacing="6">
+            <TextBlock Text="Look at the dot and click it" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock x:Name="HintText" Foreground="#9EABC8" HorizontalAlignment="Center"
+                       Text="Keep your head still. Your gaze at the moment of the click is the ground truth. Esc cancels." />
+            <TextBlock x:Name="ProgressText" Foreground="#AFC1FF" FontSize="18" HorizontalAlignment="Center" />
+        </StackPanel>
+        <TextBlock x:Name="StatusText" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,40"
+                   Foreground="#9EABC8" TextWrapping="Wrap" MaxWidth="900" TextAlignment="Center" />
+    </Grid>
+</Window>

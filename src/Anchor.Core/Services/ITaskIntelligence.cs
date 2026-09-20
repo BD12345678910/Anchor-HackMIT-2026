@@ -30,6 +30,12 @@ public interface ITaskIntelligence
         CancellationToken cancellationToken = default) =>
         Task.FromResult(PictureTreatmentPlanner.LocalGrade(request));
 
+    /// <summary>Grades each on-screen passage as part of the task or off-task (to be dimmed).</summary>
+    Task<TextGrading> GradeTextBlocksAsync(
+        TextGradingRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(TextBlockPlanner.LocalGrade(request));
+
     /// <summary>Phrases the "where you were" reminder for a frozen context capsule.</summary>
     Task<ContextReminder> ComposeReminderAsync(
         ContextCapsule capsule,

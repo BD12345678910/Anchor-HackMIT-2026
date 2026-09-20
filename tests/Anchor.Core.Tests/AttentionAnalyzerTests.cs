@@ -60,4 +60,49 @@ public sealed class AttentionAnalyzerTests
 
         Assert.StartsWith("Focus bouts are lengthening", analyzer.Analyze(at).Trend);
     }
+
+    [Fact]
+    public void Distractors_rank_places_by_time_lost_and_count_one_episode_per_visit()
+    {
+        var analyzer = new AttentionAnalyzer();
+        analyzer.Record(T0, AttentionPrediction.Create(AttentionState.Focused, 0.9, 0.1), "code");
+        analyzer.Record(T0.AddMinutes(5), AttentionPrediction.Create(AttentionState.Distracted, 0.9, 0.9), "youtube.com");
+        analyzer.Record(T0.AddMinutes(11), AttentionPrediction.Create(AttentionState.Distracted, 0.9, 0.9), "reddit.com");
+        analyzer.Record(T0.AddMinutes(13), AttentionPrediction.Create(AttentionState.Focused, 0.9, 0.1), "code");
+        analyzer.Record(T0.AddMinutes(20), AttentionPrediction.Create(AttentionState.Distracted, 0.9, 0.9), "youtube.com");
+        analyzer.Record(T0.AddMinutes(23), AttentionPrediction.Create(AttentionState.Focused, 0.9, 0.1), "code");
+
+        var analysis = analyzer.Analyze(T0.AddMinutes(25));
+
+        Assert.Equal(TimeSpan.FromMinutes(11), analysis.TimeLost);
+        Assert.Equal("youtube.com", analysis.Distractors[0].Name);
+        Assert.Equal(TimeSpan.FromMinutes(9), analysis.Distractors[0].TimeLost);
+        Assert.Equal(2, analysis.Distractors[0].Episodes);
+        Assert.Equal("reddit.com", analysis.Distractors[1].Name);
+        Assert.Equal(TimeSpan.FromMinutes(2), analysis.Distractors[1].TimeLost);
+        Assert.Equal(1, analysis.Distractors[1].Episodes);
+        Assert.DoesNotContain(analysis.Distractors, item => item.Name == "code");
+    }
+
+    [Fact]
+    public void Samples_without_a_place_still_analyze_and_rank_nothing()
+    {
+        var analyzer = new AttentionAnalyzer();
+        analyzer.Record(T0, AttentionPrediction.Create(AttentionState.Focused, 0.9, 0.1));
+        analyzer.Record(T0.AddMinutes(3), AttentionPrediction.Create(AttentionState.Distracted, 0.9, 0.9));
+        analyzer.Record(T0.AddMinutes(5), AttentionPrediction.Create(AttentionState.Focused, 0.9, 0.1));
+
+        var analysis = analyzer.Analyze(T0.AddMinutes(6));
+
+        Assert.Empty(analysis.Distractors);
+        Assert.Equal(TimeSpan.FromMinutes(2), analysis.TimeLost);
+    }
+
+    [Theory]
+    [InlineData("chrome.exe", "En.Wikipedia.org", "en.wikipedia.org")]
+    [InlineData("Code.exe", null, "Code")]
+    [InlineData("Code", "", "Code")]
+    [InlineData(null, null, null)]
+    public void Place_labels_prefer_the_site_and_drop_the_exe_suffix(string? process, string? domain, string? expected) =>
+        Assert.Equal(expected, AttentionAnalyzer.DescribePlace(process, domain));
 }

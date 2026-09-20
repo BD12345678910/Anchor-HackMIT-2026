@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Anchor.Core.Models;
 using Anchor.Core.Services;
+using Anchor_Desktop.Overlays;
 using Anchor_Desktop.Services;
 using Anchor.Infrastructure.DeepSeek;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -23,7 +24,10 @@ public sealed partial class AttentionAnalyticsViewModel : ObservableObject
     [ObservableProperty] public partial string DistractionRate { get; set; } = "—";
     [ObservableProperty] public partial string OnTaskShare { get; set; } = "—";
     [ObservableProperty] public partial string Triggers { get; set; } = "What pulls you away: no distraction recorded yet.";
+    [ObservableProperty] public partial string Distractors { get; set; } = NoDistractors;
     [ObservableProperty] public partial string Interventions { get; set; } = "Interventions used: none yet.";
+
+    private const string NoDistractors = "What distracts you most: nothing recorded yet.";
     [ObservableProperty] public partial string Trend { get; set; } = "Trend: not enough data yet.";
 
     public void Apply(AttentionAnalysis analysis)
@@ -41,6 +45,11 @@ public sealed partial class AttentionAnalyticsViewModel : ObservableObject
         Triggers = analysis.Triggers.Count == 0
             ? "What pulls you away: no distraction recorded yet."
             : "What pulls you away: " + string.Join(", ", analysis.Triggers.Take(4).Select(static pair => $"{pair.Key.Replace('_', ' ')} ×{pair.Value}"));
+        Distractors = analysis.Distractors.Count == 0
+            ? NoDistractors
+            : $"What distracts you most ({Short(analysis.TimeLost)} lost): "
+              + string.Join(", ", analysis.Distractors.Take(4).Select((item, index) =>
+                  $"{index + 1}. {item.Name} — {Short(item.TimeLost)} over {item.Episodes} visit{(item.Episodes == 1 ? string.Empty : "s")}"));
         Interventions = analysis.Interventions.Count == 0
             ? "Interventions used: none yet."
             : "Interventions used: " + string.Join(", ", analysis.Interventions.Select(static pair => $"{Describe(pair.Key)} ×{pair.Value}"));
@@ -53,6 +62,7 @@ public sealed partial class AttentionAnalyticsViewModel : ObservableObject
         DistractionRate = "—";
         OnTaskShare = "—";
         Triggers = "What pulls you away: no distraction recorded yet.";
+        Distractors = NoDistractors;
         Interventions = "Interventions used: none yet.";
         Trend = "Trend: not enough data yet.";
     }
@@ -79,10 +89,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _gazeTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private readonly DispatcherTimer _recordingTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _webcamRecordingTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _tickInFlight;
     private bool _gazeTickInFlight;
     private bool _recordingTickInFlight;
-    private int _calibrationIndex;
     private AttentionFusion _attentionFusion = new();
     private bool _sessionGazeActive;
     private bool _lastSecureWindow;
@@ -114,6 +124,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _timer.Tick += Timer_Tick;
         _gazeTimer.Tick += GazeTimer_Tick;
         _recordingTimer.Tick += RecordingTimer_Tick;
+        _webcamRecordingTimer.Tick += WebcamRecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant += Overlays_CurrentWindowMarkedRelevant;
         _services.Overlays.StepMarkedDoneFromBeacon += Overlays_StepMarkedDoneFromBeacon;
         _services.Overlays.OverlaysCleared += Overlays_Cleared;
@@ -188,8 +199,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string GazeCoordinates { get; set; } = "Unavailable";
     [ObservableProperty] public partial string GazeConfidenceLabel { get; set; } = "—";
     [ObservableProperty] public partial ImageSource? GazePreviewSource { get; set; }
-    [ObservableProperty] public partial string CalibrationTarget { get; set; } = "Top left";
-    [ObservableProperty] public partial string CalibrationProgressLabel { get; set; } = "0 of 9";
+    [ObservableProperty] public partial string CalibrationStatus { get; set; } = "Not calibrated · gaze is a rough eye-direction estimate until you calibrate.";
+    [ObservableProperty] public partial bool IsWebcamRecording { get; set; }
+    [ObservableProperty] public partial string WebcamRecordingStatusText { get; set; } = "Not recording";
+    [ObservableProperty] public partial string WebcamRecordingFolder { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Anchor Webcam");
     [ObservableProperty] public partial bool TreatCurrentWindowAsRelevant { get; set; }
     [ObservableProperty] public partial string ParticipantCode { get; set; } = "P01";
     [ObservableProperty] public partial int RecordingModeIndex { get; set; } = 1;
@@ -382,6 +396,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _taskPlanner = await _services.CreateTaskPlannerAsync();
             var planner = _taskPlanner;
             _services.Overlays.ImageBlur.Grader = (request, token) => planner.GradePicturesAsync(request, token);
+            _services.Overlays.ImageBlur.TextGrader = (request, token) => planner.GradeTextBlocksAsync(request, token);
             _services.Overlays.ImageBlur.ResetVerdicts();
             var state = await _taskPlanner.PlanAsync(TaskTitle);
             _plannedGoal = TaskTitle.Trim();
@@ -996,10 +1011,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 GazeStatusMessage = $"Camera could not start: {started.Error}";
                 return;
             }
-            _calibrationIndex = 0;
-            UpdateCalibrationLabel();
             IsGazeRunning = true;
-            GazeStatusMessage = "Live gaze test running locally. Adjust settings, then calibrate all nine points.";
+            GazeStatusMessage = started.Calibrated
+                ? "Webcam open · gaze uses your saved calibration."
+                : "Webcam open · click Calibrate by clicking to map your eyes to this screen.";
             _gazeTimer.Start();
         }
         catch (Exception error)
@@ -1024,40 +1039,96 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             CreateGazeConfiguration(),
             CreateDisplaySignature());
         GazeStatusMessage = result.Accepted
-            ? "Gaze adjustments saved. Calibration restarted because the geometry changed."
+            ? "Gaze adjustments saved."
             : $"Settings rejected: {result.Error}";
-        if (result.Accepted)
+    }
+
+    /// <summary>
+    /// Opens the full-screen calibration surface. Each click pairs the target position with the gaze
+    /// features held at that instant, which is far more reliable than asking the user to hold a pose.
+    /// </summary>
+    [RelayCommand]
+    private async Task CalibrateGazeAsync()
+    {
+        if (!IsGazeRunning)
         {
-            _calibrationIndex = 0;
-            UpdateCalibrationLabel();
+            CalibrationStatus = "Open the webcam first — calibration needs live eye tracking.";
+            return;
+        }
+        await _services.Inference.ResetCalibrationAsync();
+        var window = new GazeCalibrationWindow
+        {
+            Capture = (x, y) => _services.Inference.AddCalibrationSampleAsync(x, y),
+            Finish = () => _services.Inference.FinishCalibrationAsync(CreateDisplaySignature()),
+            Closing = message => CalibrationStatus = message,
+        };
+        CalibrationStatus = $"Calibrating · click each of the {GazeCalibrationWindow.Targets.Length} dots while looking at it.";
+        OverlayWindowHelper.ConfigureBounds(
+            window,
+            OverlayWindowHelper.GetActiveWorkArea(App.WindowHandle),
+            clickThrough: false);
+        window.Activate();
+    }
+
+    [RelayCommand]
+    private async Task ResetCalibrationAsync()
+    {
+        var progress = await _services.Inference.ResetCalibrationAsync();
+        CalibrationStatus = progress.Accepted
+            ? "Calibration cleared · gaze falls back to a rough eye-direction estimate."
+            : $"Could not clear the calibration: {progress.Error}";
+    }
+
+    [RelayCommand]
+    private async Task StartWebcamRecordingAsync()
+    {
+        if (!IsGazeRunning)
+        {
+            WebcamRecordingStatusText = "Open the webcam before recording.";
+            return;
+        }
+        var status = await _services.Inference.StartWebcamRecordingAsync(WebcamRecordingFolder);
+        IsWebcamRecording = status.Recording;
+        WebcamRecordingStatusText = status.Accepted
+            ? $"Recording to {status.VideoPath}"
+            : $"Recording could not start: {status.Error}";
+        if (status.Recording)
+        {
+            _webcamRecordingTimer.Start();
         }
     }
 
     [RelayCommand]
-    private async Task CaptureCalibrationPointAsync()
+    private async Task StopWebcamRecordingAsync()
     {
-        if (!IsGazeRunning)
+        _webcamRecordingTimer.Stop();
+        var status = await _services.Inference.StopWebcamRecordingAsync();
+        IsWebcamRecording = false;
+        WebcamRecordingStatusText = string.IsNullOrEmpty(status.VideoPath)
+            ? $"Recording stopped: {status.Error}"
+            : $"Saved {status.FrameCount} frames ({Describe(status.Elapsed)}) to {status.VideoPath}";
+    }
+
+    [RelayCommand]
+    private void OpenWebcamRecordingFolder()
+    {
+        Directory.CreateDirectory(WebcamRecordingFolder);
+        Process.Start(new ProcessStartInfo(WebcamRecordingFolder) { UseShellExecute = true });
+    }
+
+    private static string Describe(TimeSpan elapsed) =>
+        elapsed.TotalMinutes >= 1 ? $"{elapsed:mm\\:ss}" : $"{elapsed.TotalSeconds:0.0} s";
+
+    private async void WebcamRecordingTimer_Tick(object? sender, object args)
+    {
+        var status = await _services.Inference.GetWebcamRecordingAsync();
+        IsWebcamRecording = status.Recording;
+        if (!status.Recording)
         {
-            GazeStatusMessage = "Start Test Gaze before calibration.";
+            _webcamRecordingTimer.Stop();
             return;
         }
-        var point = CalibrationPoints[_calibrationIndex];
-        var progress = await _services.Inference.AddCalibrationSampleAsync(point.X, point.Y);
-        if (!progress.Accepted)
-        {
-            GazeStatusMessage = $"Hold your gaze on the target: {progress.Error}";
-            return;
-        }
-        _calibrationIndex++;
-        if (_calibrationIndex >= CalibrationPoints.Length)
-        {
-            var result = await _services.Inference.FinishCalibrationAsync(CreateDisplaySignature());
-            GazeStatusMessage = result.Accepted
-                ? $"Calibration ready · {result.InlierCount}/{result.SampleCount} inliers · median error {result.MedianError:P1}."
-                : $"Calibration failed: {result.Error}";
-            _calibrationIndex = 0;
-        }
-        UpdateCalibrationLabel();
+        WebcamRecordingStatusText = $"Recording · {Describe(status.Elapsed)} · {status.FrameCount} frames → {status.VideoPath}";
     }
 
     [RelayCommand]
@@ -1065,6 +1136,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         _gazeTimer.Stop();
         _recordingTimer.Stop();
+        if (IsWebcamRecording)
+        {
+            await StopWebcamRecordingAsync();
+        }
         await _services.Inference.StopGazeAsync();
         IsGazeRunning = false;
         GazePreviewSource = null;
@@ -1187,6 +1262,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _timer.Tick -= Timer_Tick;
         _gazeTimer.Tick -= GazeTimer_Tick;
         _recordingTimer.Tick -= RecordingTimer_Tick;
+        _webcamRecordingTimer.Stop();
+        _webcamRecordingTimer.Tick -= WebcamRecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant -= Overlays_CurrentWindowMarkedRelevant;
         _services.Overlays.StepMarkedDoneFromBeacon -= Overlays_StepMarkedDoneFromBeacon;
         _services.Overlays.OverlaysCleared -= Overlays_Cleared;
@@ -1309,7 +1386,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 _services.Inference.IsAvailable));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
             await _services.Overlays.UpdateAttentionAsync(prediction);
-            ApplyPrediction(prediction);
+            ApplyPrediction(prediction, AttentionAnalyzer.DescribePlace(context.ProcessName, context.Domain));
         }
         catch (Exception error)
         {
@@ -1390,10 +1467,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void ApplyPrediction(AttentionPrediction prediction)
+    private void ApplyPrediction(AttentionPrediction prediction, string? place = null)
     {
         var now = DateTimeOffset.UtcNow;
-        _analyzer.Record(now, prediction);
+        _analyzer.Record(now, prediction, place);
         Analytics.Apply(_analyzer.Analyze(now));
         AttentionState = prediction.State.ToString();
         Confidence = $"{prediction.Confidence:P0}";
@@ -1539,13 +1616,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         return $"{width}x{height}@{dpi}";
     }
 
-    private void UpdateCalibrationLabel()
-    {
-        CalibrationProgressLabel = $"{_calibrationIndex} of {CalibrationPoints.Length}";
-        CalibrationTarget = CalibrationPointNames[
-            Math.Min(_calibrationIndex, CalibrationPointNames.Length - 1)];
-    }
-
     private static async Task<ImageSource> CreateBitmapAsync(byte[] jpeg)
     {
         using var stream = new InMemoryRandomAccessStream();
@@ -1612,17 +1682,4 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
 
-    private static readonly (double X, double Y)[] CalibrationPoints =
-    [
-        (0.10, 0.10), (0.50, 0.10), (0.90, 0.10),
-        (0.10, 0.50), (0.50, 0.50), (0.90, 0.50),
-        (0.10, 0.90), (0.50, 0.90), (0.90, 0.90)
-    ];
-
-    private static readonly string[] CalibrationPointNames =
-    [
-        "Top left", "Top center", "Top right",
-        "Middle left", "Center", "Middle right",
-        "Bottom left", "Bottom center", "Bottom right"
-    ];
 }
