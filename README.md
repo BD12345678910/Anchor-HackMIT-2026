@@ -9,9 +9,9 @@ Anchor is assistive software, not a diagnostic tool or medical device. Its atten
 Download `Anchor-win-x64.zip` from the GitHub Releases page (or build it with `scripts\build.ps1`, which writes `release/Anchor-win-x64`), extract it anywhere, and:
 
 1. Run `Anchor.exe`. No Python or .NET installation is required.
-2. In **DeepSeek intelligence**, enter an API key and save. DeepSeek then becomes the default planner, screen-progress judge, and reminder writer (there is no separate on/off switch); without a key Anchor uses a clearly labeled local fallback.
-3. In **Test Gaze**, select **Find cameras**, choose a camera, select **Start**, tune mirror/rotation/offset/smoothing/sensitivity, and complete the nine-point calibration if needed. If no camera is listed, run `camera-check.ps1` from the extracted folder: it reports what Windows, the camera privacy switches, and Anchor's OpenCV worker each see, and which app currently holds the device.
-4. Enter a goal, select **Plan goal**, review the subtasks, and select **Start focus session**.
+2. On the **Settings** page, under **DeepSeek intelligence**, enter an API key and save. DeepSeek then becomes the default planner, screen-progress judge, and reminder writer (there is no separate on/off switch); without a key Anchor uses a clearly labeled local fallback.
+3. On the **Camera** page, select **Find cameras**, choose a camera, select **Open webcam** for the live preview and eye crops, tune mirror/rotation/offset/smoothing/sensitivity, and run **Calibrate by clicking** (13 targets; you click each one and the gaze features at that click become the ground truth). The status line reports the median and maximum error as a share of the screen. If no camera is listed, run `camera-check.ps1` from the extracted folder: it reports what Windows, the camera privacy switches, and Anchor's OpenCV worker each see, and which app currently holds the device.
+4. Enter a goal, select **Plan goal**, review the subtasks, and select **Start focus session**. Steps tick off automatically from screen evidence; the beacon's **Done** button marks the current step complete without opening Settings.
 5. Closing Settings hides it; Anchor keeps running from its stationary notification-area icon. Use `Ctrl+Shift+A` to reopen Settings.
 
 Safety controls:
@@ -22,13 +22,15 @@ Safety controls:
 
 ## Implemented system
 
-- Computer-vision gaze estimation using OpenCV and MediaPipe, with camera discovery, live preview, adjustable calibration, confidence, face-presence, and fail-open behavior.
+- Computer-vision gaze estimation using OpenCV and MediaPipe, driven by the eye regions (iris position against the eye corners and lids) rather than whole-face pose, with camera discovery, live preview of the camera and the eye crops, click-based 13-target calibration with a reported error, confidence, face-presence, and fail-open behavior.
 - Multimodal attention fusion across gaze, foreground app and redacted title, semantic relevance, app switches, mouse behaviour, scroll bursts, and keyboard behaviour including typing into a page that accepts no input. Stillness counts for nothing; only movement in excess of the work does. Raw keys are never stored.
 - DeepSeek-powered goal decomposition, subtask breakdown, and task-relevance classification, with timeouts and deterministic fallback.
 - A Goal Beacon that shows the current subtask, advances when the user completes a step, and pulses/shakes when sustained evidence indicates drift.
-- Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, dynamic browser image blur, future-text masking, reversible animation suppression, and reversible HTML edits that delete off-task blocks and trim sentences in the focused browser.
+- Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, pixelation of off-task pictures in whatever window is in front (detected from the captured pixels, no extension), future-text masking, reversible animation suppression, and reversible HTML edits that delete off-task blocks and trim sentences in the focused browser. Pictures the model judges relevant to the task are left untouched.
 - Passive recovery: a Context Capsule saves the most recent safe task anchor before distraction. Manual and automatic recovery can show the prior location, last action, next step, recap, reopen, and smaller-step controls.
 - Reading support: progress tracking, large-skip detection, and repeated-phrase dwell detection.
+- Attention analytics on the **Insights** page: time on task, median and longest attention span, distractions per hour, recovery time, a ranking of what distracts you most (by app/site, time lost, frequency), and what Anchor learned from your gate answers.
+- A webcam-only recorder (**Record** on the Camera page) that writes an MP4 of exactly what the camera sees, for your own demos.
 - Local study recording: Display 1 at 15 FPS with the gaze point, the attention state with its distraction rating and confidence, and — when the camera is open — the camera view with the eyes enlarged, all composited into one MP4 (**Record screen + eyes + rating** on the Camera page), plus aligned event JSONL, gaze/sample CSV, summary JSON, and manifest JSON. Baseline mode senses but suppresses interventions.
 - A **Compare recordings** control that compares one baseline and one Anchor-enabled summary without claiming clinical significance.
 - Local SQLite timeline and focus/recovery metrics, protected-window suppression, authenticated local IPC, watchdog release, and deterministic replay scenarios.
@@ -42,14 +44,15 @@ list is decorative.
 | --- | --- | --- |
 | Foreground app and window title | `GetForegroundWindow` + redacted title | Relevance against the goal; app switches count as churn |
 | Page/window semantic relevance | On-screen OCR text graded by DeepSeek (cached per page) | Main relevance term; local keyword rules only without a key |
-| On-screen text and pictures | `Windows.Media.Ocr` + screen capture, pictures graded by the vision model | Sentence/picture treatment and progress evidence |
+| On-screen text | `Windows.Media.Ocr` over a capture of the front window (on-device) | Sentence treatment, progress evidence, and the context for every DeepSeek call |
+| Pictures on screen | Photo-like rectangles found by pixel statistics in the same capture (not `<img>` elements), downscaled to ≤224 px and graded `illustrates / unrelated / bait` by DeepSeek's vision model, cached ~10 min | Which pictures stay sharp and which are pixelated |
 | Step progress | Screen evidence matched to the current step | Removes distraction evidence, auto-ticks the step |
 | Idle time | Raw input timestamps | Never evidence on its own — reading, watching and thinking all look idle. Only a still seat plus a camera that sees nobody reports `away_from_screen` |
 | Scrolling | Raw input wheel notches, direction flips, and page keys where no text caret exists | Fast, erratic or unbroken scroll bursts; anchors the reminder to the page before the burst |
 | Mouse motion and clicks | Raw input path length, net displacement, direction changes, click rate | Travel far beyond what the work needs, aimless drift and click mashing |
 | Keyboard | Per-category key counts (letters, digits, navigation, editing, modifiers, function) — raw keys are never stored | Typing quality (gibberish) and random typing: bursts while the foreground window has no text caret and the screen text does not change |
 | Text caret presence | `GetGUIThreadInfo` on the foreground thread | Separates typing into an editor from typing into a page that accepts no input |
-| Browser page and reading position | DevTools `Runtime.evaluate` in the focused browser | Recovery card location, reading progress and skips |
+| Browser page and reading position | DevTools `Runtime.evaluate`, only in the browser Anchor launched | Recovery card location, reading progress and skips |
 | Gaze | Worker eye-region estimation, only when a camera is open and confidence is sufficient | Sustained gaze away from the task region; missing gaze is never treated as distraction |
 | Manual reports | Beacon and recovery controls | Direct evidence, and marks a window relevant |
 
@@ -106,13 +109,13 @@ Browser-internal pages and password/payment pages are never edited.
 
 ## Build from source
 
-Requirements: Windows 11 x64, PowerShell, Node.js, and the repository's `.tools` and `.venv` environments.
+Requirements: Windows x64 with the Windows App SDK prerequisites, PowerShell, `node` on `PATH`, and the repository-local environments the script insists on — a .NET SDK under `.tools\dotnet` and a Python environment under `.venv` (the build fails immediately if either is missing).
 
 ```powershell
 .\scripts\build.ps1
 ```
 
-The build restores dependencies, runs the core, infrastructure, worker and browser test suites, and three deterministic replay audits. It then publishes and launches the self-contained release as a smoke test. Output: `release/Anchor-win-x64`.
+The build restores dependencies, runs the .NET, Python worker and browser test suites and the deterministic replay audits, publishes the self-contained desktop app, packages the vision worker with PyInstaller into a single `Anchor.VisionWorker.exe`, and launches the result once as a smoke test. Output: `release/Anchor-win-x64` (the release `.zip` is zipped from that folder separately). The repository has no CI; these are the checks.
 
 For a faster development-only verification without packaging:
 
@@ -154,7 +157,10 @@ scripts                     build, verification, and demo
 
 - The release is unsigned; Windows may display an unknown-publisher warning.
 - Browser DOM editing requires the focused browser Anchor launches; pages opened in another browser profile are only treated by the desktop pixel overlay.
-- Object-level picture blur is available in browser pages; desktop apps receive safe dimming/spotlight overlays rather than OCR-based object segmentation.
+- Picture detection outside the browser is heuristic: pictures are screen rectangles inferred from pixel statistics, so a colourful UI panel can be treated as a picture and the "nearby text" sent with it is whatever OCR landed next to the rectangle, not a real caption.
+- Grading a picture sends a low-resolution JPEG crop of that screen region to DeepSeek's vision model, along with an OCR excerpt of the page. Nothing is sent when no API key is stored.
+- Gaze accuracy has been measured once, on one person and one camera: 13 targets, median error 8.2 % of the screen, maximum 14.6 %. Treat it as a coarse region estimate, not a point.
+- The live camera path has not been exercised on the build machine (no webcam); the camera-absent paths and the gaze geometry are covered by tests.
 - Audio is never recorded. The camera view is only written into a recording while the camera is open and you start one; the evidence clip then contains your face and eyes, so it stays in the local output folder unless you share it.
 - Gaze quality depends on lighting, camera placement, eyewear, and calibration. Missing or low-confidence gaze becomes `Unknown`; it is not treated as proof of distraction.
 - Site sign-in, DRM/protected pages, and secure Windows surfaces can limit interventions or recording.
