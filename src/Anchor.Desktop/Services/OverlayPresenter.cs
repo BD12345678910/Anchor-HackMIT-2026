@@ -24,6 +24,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     private ToolkitState _toolkitState = ToolkitState.Off;
     private (double X, double Y, DateTimeOffset At)? _lastSpotlight;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _previewTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pointerSpotlightTimer;
+    private bool _spotlightFromGaze;
     private int _focusedTicks;
     private bool _imageBlurSuspended;
     private bool _imageBlurPreview;
@@ -76,6 +78,12 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         var results = new List<ToolkitApplyResult>();
         await App.DispatcherQueue.EnqueueAsync(() =>
         {
+            // Esc suspends the picture blur until the user changes a tool; the per-tick re-apply of
+            // an unchanged state must not undo that.
+            if (state != _toolkitState)
+            {
+                _imageBlurSuspended = false;
+            }
             _toolkitState = state;
             _browserBridge?.UpdateSnapshot("toolkitState", System.Text.Json.JsonSerializer.Serialize(new
             {
@@ -91,17 +99,18 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             }));
             EnableVisualFilter = state.PeripheralDim;
             EnablePointerGuard = state.PointerGuard;
-            _imageBlurSuspended = false;
             ImageBlur.Refresh();
             results.Add(new(
                 ToolkitFeature.ImageBlur,
                 state.SecureWindow ? "Suppressed for secure window"
+                    : state.ImageBlur && _imageBlurSuspended ? "Released with Esc · toggle Blur off and on to re-arm"
                     : state.ImageBlur ? (ImageBlur.IsBlurring ? ImageBlur.Status : "Armed · blurs pictures in the front window")
                     : state.BrowserImageBlur ? "Armed · starts with the focus session" : "Off",
                 ImageBlur.IsBlurring));
             if (state.SecureWindow)
             {
                 Close(ref _filter);
+                StopPointerSpotlight();
                 Close(ref _spotlight);
                 Close(ref _firewall);
                 results.Add(new(ToolkitFeature.PeripheralDim, "Suppressed for secure window", false));
@@ -138,13 +147,16 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
             if (!state.GazeSpotlight)
             {
+                StopPointerSpotlight();
                 Close(ref _spotlight);
                 _lastSpotlight = null;
             }
             results.Add(new(
                 ToolkitFeature.GazeSpotlight,
                 state.GazeSpotlight
-                    ? (_spotlight is not null ? "Following your gaze" : "Armed · needs a live camera (Test gaze)")
+                    ? (_spotlight is null
+                        ? "Armed · camera not open, follows gaze once Test gaze runs; Preview follows the pointer"
+                        : _spotlightFromGaze ? "Following your gaze (camera on)" : "Preview · camera not open, following the pointer")
                     : "Off",
                 _spotlight is not null));
             results.Add(new(
@@ -166,7 +178,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             switch (feature)
             {
                 case ToolkitFeature.GazeSpotlight:
-                    ShowSpotlight(0.5, 0.5);
+                    StartPointerSpotlight();
                     break;
                 case ToolkitFeature.PeripheralDim:
                     ShowFilter();
@@ -287,6 +299,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         {
             Close(ref _filter);
         }
+        StopPointerSpotlight();
         Close(ref _spotlight);
         Close(ref _firewall);
         _lastSpotlight = null;
@@ -313,7 +326,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 || sample.X is null
                 || sample.Y is null)
             {
-                Close(ref _spotlight);
+                if (_pointerSpotlightTimer is null)
+                {
+                    Close(ref _spotlight);
+                }
                 _lastSpotlight = null;
                 return;
             }
@@ -328,8 +344,52 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 y = MoveToward(previous.Y, y, maximumDelta);
             }
             _lastSpotlight = (x, y, sample.Timestamp);
+            StopPointerSpotlight();
+            _spotlightFromGaze = true;
             ShowSpotlight(x, y);
         });
+    }
+
+    /// <summary>Without a camera the spotlight preview follows the mouse pointer instead of gaze.</summary>
+    private void StartPointerSpotlight()
+    {
+        _spotlightFromGaze = false;
+        _pointerSpotlightTimer ??= App.DispatcherQueue.CreateTimer();
+        _pointerSpotlightTimer.IsRepeating = true;
+        _pointerSpotlightTimer.Interval = TimeSpan.FromMilliseconds(40);
+        _pointerSpotlightTimer.Tick -= PointerSpotlightTimer_Tick;
+        _pointerSpotlightTimer.Tick += PointerSpotlightTimer_Tick;
+        _pointerSpotlightTimer.Start();
+        PointerSpotlightTimer_Tick(_pointerSpotlightTimer, null!);
+    }
+
+    private void StopPointerSpotlight()
+    {
+        if (_pointerSpotlightTimer is null)
+        {
+            return;
+        }
+        _pointerSpotlightTimer.Stop();
+        _pointerSpotlightTimer.Tick -= PointerSpotlightTimer_Tick;
+        _pointerSpotlightTimer = null;
+    }
+
+    private void PointerSpotlightTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        if (_spotlightFromGaze || _toolkitState.SecureWindow)
+        {
+            StopPointerSpotlight();
+            return;
+        }
+        var foreground = GetForegroundWindow();
+        var work = OverlayWindowHelper.GetActiveWorkArea(foreground != IntPtr.Zero ? foreground : App.WindowHandle);
+        double x = 0.5, y = 0.5;
+        if (GetCursorPos(out var point) && work.Width > 0 && work.Height > 0)
+        {
+            x = Math.Clamp((point.X - work.X) / (double)work.Width, 0, 1);
+            y = Math.Clamp((point.Y - work.Y) / (double)work.Height, 0, 1);
+        }
+        ShowSpotlight(x, y);
     }
 
     public Task PresentAsync(
@@ -405,6 +465,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         Close(ref _filter);
         Close(ref _recovery);
         Close(ref _gate);
+        StopPointerSpotlight();
         Close(ref _spotlight);
         Close(ref _firewall);
         _lastSpotlight = null;
@@ -670,6 +731,17 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -923,7 +923,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         catch (Exception error)
         {
             ReplaceCameras(windowsDevices);
-            GazeStatusMessage = $"Camera check failed: {error.Message}";
+            _services.LogError("camera check", error);
+            GazeStatusMessage = windowsDevices.Count == 0
+                ? "No camera found by Windows, and the vision worker's probe did not finish "
+                  + $"({error.Message}). Plug in a webcam and refresh, or run camera-check.ps1 next to Anchor.exe."
+                : $"Windows sees {Describe(windowsDevices)}, but the vision worker's probe did not finish ({error.Message}). "
+                  + "Close other apps using the camera, then refresh or run camera-check.ps1 next to Anchor.exe for a per-backend report.";
         }
         finally
         {

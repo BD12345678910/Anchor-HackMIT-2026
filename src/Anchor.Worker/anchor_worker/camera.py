@@ -36,15 +36,31 @@ class FaceLandmarkDetector(Protocol):
 class CameraDeviceProbe:
     @staticmethod
     def list_devices(cv2_module: Any, max_index: int = 8) -> list[CameraDevice]:
+        """Probes indices in order and stops after `EMPTY_INDEX_LIMIT` consecutive indices
+        that no backend can even open, since Windows numbers cameras contiguously. This keeps
+        the probe well inside the RPC deadline on machines without a camera."""
         devices: list[CameraDevice] = []
+        empty_run = 0
         for index in range(max(0, max_index)):
-            capture = CameraDeviceProbe.open_device(cv2_module, index)
-            if capture is not None:
-                devices.append(CameraDevice(index, f"Camera {index + 1}"))
+            opened_any = False
+            usable = False
+            for _, capture, delivers_frames, _ in CameraDeviceProbe.try_backends(cv2_module, index):
+                if capture is None:
+                    continue
+                opened_any = True
                 capture.release()
+                if delivers_frames:
+                    usable = True
+                    break
+            if usable:
+                devices.append(CameraDevice(index, f"Camera {index + 1}"))
+            empty_run = 0 if opened_any else empty_run + 1
+            if empty_run >= CameraDeviceProbe.EMPTY_INDEX_LIMIT:
+                break
         return devices
 
     BACKENDS = ("CAP_DSHOW", "CAP_MSMF", "CAP_ANY")
+    EMPTY_INDEX_LIMIT = 2
 
     @staticmethod
     def open_device(cv2_module: Any, index: int) -> Any | None:
