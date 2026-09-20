@@ -481,7 +481,7 @@
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel Spacing="10">
                                 <TextBlock Text="DeepSeek intelligence" Style="{StaticResource CardTitle}" />
-                                <TextBlock Text="DeepSeek (deepseek-flash) plans the goal, judges window relevance, decides from on-device OCR text whether the current step is finished, and phrases the 'where you were' reminder for the activity you were doing. It is always on once a key is saved; local rules are only the fallback when there is no key or the API is unreachable, and every fallback result is labelled 'Local rules'. Only bounded, redacted text is sent — never screenshots or the camera feed."
+                                <TextBlock Text="DeepSeek (deepseek-flash) plans the goal, judges window relevance, decides from on-device OCR text whether the current step is finished, and phrases the 'where you were' reminder for the activity you were doing. It is always on once a key is saved; local rules are only the fallback when there is no key or the API is unreachable, and every fallback result is labelled 'Local rules'. Bounded, redacted text is sent, plus a low-resolution crop of each picture being graded — never full screenshots, screen video or the camera feed."
                                            Style="{StaticResource Hint}" />
                                 <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="sk-… (stored encrypted for this Windows account)"
                                              PasswordChanged="DeepSeekKeyBox_PasswordChanged" />

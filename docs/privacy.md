@@ -6,22 +6,22 @@ Anchor infers whether a person may have lost task context. That is sensitive and
 
 | Source | What Anchor uses | Stored by normal use |
 |---|---|---|
-| Camera | Face landmarks, normalized gaze point, confidence, face-present flag | Calibration/settings and derived events; no webcam frames |
+| Camera | Eye-region landmarks, normalized gaze point, confidence, face-present flag | Calibration/settings and derived events; webcam frames are written to disk only while the user records |
 | Foreground desktop | Process name and redacted window title | Bounded derived events |
 | Keyboard | Counts by key category | Aggregate counts; never raw keys or typed text |
 | Mouse/scroll | Movement distance, idle duration, scroll reversals | Aggregate values; not raw pointer history. Idle time is never read as distraction on its own |
 | Browser adapter | Approved origin, title, reading progress, skip/stuck events, optional short phrase | Derived event; no browsing-history permission |
 | Task context | Goal, subtask, sanitized document/origin anchor, prior and next action | Local Context Capsule |
-| DeepSeek, when enabled | Goal and bounded/redacted task context needed for planning or relevance | Subject to the user's DeepSeek account and API policy |
+| DeepSeek, once a key is stored | Goal and bounded/redacted task context, a bounded OCR excerpt of the front window, and low-resolution JPEG crops of the picture regions being graded | Subject to the user's DeepSeek account and API policy |
 | Study recording, when explicitly started | Display 1 frames, composited gaze point/task state, event timeline, derived samples | MP4/JSONL/CSV/JSON in the folder chosen by the user |
 
-Webcam video and audio recording are unavailable in this release. The live camera stream is processed locally by the bundled gaze worker and is not written to the study output. Ordinary use does not retain screenshots. Screen capture starts only after the user selects **Start recording** and ends on **Stop recording**, session stop, worker failure, or app shutdown.
+Audio is never recorded. The live camera stream is processed locally by the bundled gaze worker and reaches disk only in a recording the user starts: **Record** on the Camera page writes the camera view alone, and **Record screen + eyes + rating** writes the screen with an enlarged eye crop and the attention verdict. Ordinary use retains no screenshots; the periodic screen capture used for OCR, picture grading and progress is held in memory. Screen recording starts only after the user starts it and ends on stop, session stop, worker failure, or app shutdown.
 
 ## Local and cloud boundaries
 
 Gaze, recording, sensor fusion, context storage, and interventions run locally. The desktop host, browser bridge, and worker communicate through authenticated local channels with random per-launch credentials and bounded messages.
 
-DeepSeek is optional and off until the user enables it and stores an API key. The key is encrypted for the current Windows account. When enabled, Anchor sends the goal and bounded task context for task decomposition, relevance classification, or smaller-step recovery. It does not send screen video, webcam frames, raw keys, or raw pointer traces. If DeepSeek is disabled, unreachable, malformed, or slow, Anchor reports the degradation and uses deterministic local fallback.
+DeepSeek is off until the user stores an API key, and always on afterwards. The key is encrypted for the current Windows account. When enabled, Anchor sends the goal and bounded task context for task decomposition, relevance classification, progress judging, and reminder wording, a bounded redacted OCR excerpt of the front window, and — for picture grading — a JPEG crop of each detected picture region downscaled to at most 224 px on its longest side. It does not send screen video, full screenshots, webcam frames, raw keys, or raw pointer traces. If DeepSeek is disabled, unreachable, malformed, or slow, Anchor reports the degradation and uses deterministic local fallback.
 
 ## Study files
 
