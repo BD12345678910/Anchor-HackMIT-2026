@@ -69,6 +69,7 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
 
         var inputEvent = _input.Snapshot(now);
         _events?.Writer.TryWrite(inputEvent);
+        _foreground?.Refresh();
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
         var title = GetFeature(foreground, "title");
@@ -142,6 +143,7 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         string currentSubtask,
         IReadOnlyList<string>? userRelevantTargets = null)
     {
+        _foreground?.Refresh();
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
         var title = GetFeature(foreground, "title");

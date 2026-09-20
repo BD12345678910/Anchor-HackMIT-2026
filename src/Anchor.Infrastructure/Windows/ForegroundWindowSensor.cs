@@ -87,6 +87,31 @@ public sealed class ForegroundWindowSensor : IDisposable
         ObserveWindow(GetForegroundWindow());
     }
 
+    /// <summary>
+    /// Re-reads the foreground window so in-place title changes (tab switches, page
+    /// navigation) are seen even though they raise no foreground event.
+    /// </summary>
+    public void Refresh()
+    {
+        var window = GetForegroundWindow();
+        if (window == IntPtr.Zero || _writer is null)
+        {
+            return;
+        }
+
+        var title = new StringBuilder(512);
+        GetWindowText(window, title, title.Capacity);
+        var redacted = SensitiveTextRedactor.Redact(title.ToString()) ?? string.Empty;
+        if (LastEvent is { } last
+            && last.Features.TryGetValue("title", out var previous)
+            && string.Equals(previous, redacted, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ObserveWindow(window);
+    }
+
     public void Dispose()
     {
         if (_hook != IntPtr.Zero)
