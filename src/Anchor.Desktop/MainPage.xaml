@@ -211,6 +211,9 @@
                                         <Button Content="Preview blur (20 s)" VerticalAlignment="Bottom" Margin="0,0,0,6"
                                                 Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="ImageBlur" />
                                     </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Open focused browser" Command="{x:Bind ViewModel.OpenFocusedBrowserCommand}" />
+                                    </StackPanel>
                                     <TextBlock Text="{x:Bind ViewModel.BrowserStatus, Mode=OneWay}" Style="{StaticResource Hint}" />
                                     <ToggleSwitch Header="Hide text ahead of where you are reading" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.HideFutureTextEnabled, Mode=TwoWay}" />
                                     <ToggleSwitch Header="Pause animations and GIFs" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.SuppressAnimationsEnabled, Mode=TwoWay}" />
@@ -218,7 +221,7 @@
                                     <ToggleSwitch Header="Trim long sentences and drop ones unrelated to your task" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.SimplifyPageTextEnabled, Mode=TwoWay}" />
                                     <TextBlock Text="Blocks and sentences are emptied in the page HTML but keep the height they occupied, so the page never jumps; the original markup is restored when the session ends or the tool is turned off. Anything mentioning your goal or current step is kept."
                                                Style="{StaticResource Hint}" />
-                                    <TextBlock Text="Optional: load browser\anchor-extension as an unpacked extension (chrome://extensions → Developer mode → Load unpacked) for the page-text tools above. Password, payment, and non-http pages are never touched."
+                                    <TextBlock Text="Open focused browser starts Chrome or Edge in Anchor's own profile and edits those pages directly — nothing to install. Password, payment, and non-http pages are never touched."
                                                Style="{StaticResource Hint}" />
                                 </StackPanel>
                             </Border>

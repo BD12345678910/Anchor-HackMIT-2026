@@ -21,6 +21,7 @@ public sealed class InputActivitySensor
     private const ushort RimTypeMouse = 0;
     private const ushort RimTypeKeyboard = 1;
     private const ushort RiMouseWheel = 0x0400;
+    private const ushort RiMouseButtonDown = 0x0001 | 0x0004 | 0x0010 | 0x0040 | 0x0100;
     private const ushort WmKeyDown = 0x0100;
     private const ushort WmSysKeyDown = 0x0104;
 
@@ -28,6 +29,12 @@ public sealed class InputActivitySensor
     private readonly object _gate = new();
     private readonly int[] _keyCounts = new int[Enum.GetValues<VirtualKeyCategory>().Length];
     private double _mouseDistance;
+    private double _mouseNetX;
+    private double _mouseNetY;
+    private int _mouseDirectionChanges;
+    private int _mouseClicks;
+    private int _lastMouseSignX;
+    private int _lastMouseSignY;
     private int _scrollReversals;
     private int _scrollNotches;
     private int _lastScrollDirection;
@@ -42,12 +49,40 @@ public sealed class InputActivitySensor
         _sessionId = sessionId;
     }
 
+    /// <summary>
+    /// Accumulates both the length of the path the cursor took and where it actually ended up:
+    /// a long path with a short net displacement is circling rather than pointing at something.
+    /// </summary>
     public void RecordMouseDelta(int deltaX, int deltaY)
     {
         lock (_gate)
         {
             _mouseDistance += Math.Sqrt(((double)deltaX * deltaX) + ((double)deltaY * deltaY));
+            _mouseNetX += deltaX;
+            _mouseNetY += deltaY;
+            _mouseDirectionChanges += CountDirectionChange(Math.Sign(deltaX), ref _lastMouseSignX)
+                + CountDirectionChange(Math.Sign(deltaY), ref _lastMouseSignY);
         }
+    }
+
+    public void RecordMouseClick()
+    {
+        lock (_gate)
+        {
+            _mouseClicks++;
+        }
+    }
+
+    private static int CountDirectionChange(int sign, ref int lastSign)
+    {
+        if (sign == 0)
+        {
+            return 0;
+        }
+
+        var changed = lastSign != 0 && sign != lastSign;
+        lastSign = sign;
+        return changed ? 1 : 0;
     }
 
     public void RecordKeyDown(VirtualKeyCategory category)
@@ -87,6 +122,10 @@ public sealed class InputActivitySensor
             var features = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["mouse_distance"] = Math.Round(_mouseDistance).ToString(CultureInfo.InvariantCulture),
+                ["mouse_net_distance"] = Math.Round(Math.Sqrt((_mouseNetX * _mouseNetX) + (_mouseNetY * _mouseNetY)))
+                    .ToString(CultureInfo.InvariantCulture),
+                ["mouse_direction_changes"] = _mouseDirectionChanges.ToString(CultureInfo.InvariantCulture),
+                ["mouse_click_count"] = _mouseClicks.ToString(CultureInfo.InvariantCulture),
                 ["key_count"] = keyCount.ToString(CultureInfo.InvariantCulture),
                 ["key_letter_count"] = _keyCounts[(int)VirtualKeyCategory.Letter].ToString(CultureInfo.InvariantCulture),
                 ["key_digit_count"] = _keyCounts[(int)VirtualKeyCategory.Digit].ToString(CultureInfo.InvariantCulture),
@@ -101,6 +140,12 @@ public sealed class InputActivitySensor
 
             Array.Clear(_keyCounts);
             _mouseDistance = 0;
+            _mouseNetX = 0;
+            _mouseNetY = 0;
+            _mouseDirectionChanges = 0;
+            _mouseClicks = 0;
+            _lastMouseSignX = 0;
+            _lastMouseSignY = 0;
             _scrollReversals = 0;
             _scrollNotches = 0;
             _lastScrollDirection = 0;
@@ -135,6 +180,10 @@ public sealed class InputActivitySensor
             if ((input.Data.Mouse.ButtonFlags & RiMouseWheel) != 0)
             {
                 RecordScrollDelta((short)input.Data.Mouse.ButtonData);
+            }
+            else if ((input.Data.Mouse.ButtonFlags & RiMouseButtonDown) != 0)
+            {
+                RecordMouseClick();
             }
             return null;
         }

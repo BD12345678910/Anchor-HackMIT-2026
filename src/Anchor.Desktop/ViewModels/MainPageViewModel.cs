@@ -5,6 +5,7 @@ using Anchor.Core.Models;
 using Anchor.Core.Services;
 using Anchor_Desktop.Overlays;
 using Anchor_Desktop.Services;
+using Anchor.Infrastructure.Browser;
 using Anchor.Infrastructure.DeepSeek;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -105,6 +106,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private const int TypedTextKeyCount = 8;
 
     private string? _lastTypedLine;
+    private string? _lastKeyboardScreenHash;
+    private string? _lastPageEdit;
+    private DateTimeOffset _lastPageContextRead = DateTimeOffset.MinValue;
     private ScreenSnapshot? _lastScreen;
     private DateTimeOffset _lastScreenRead = DateTimeOffset.MinValue;
     private string? _lastScreenIdentity;
@@ -190,7 +194,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool GazeSpotlightEnabled { get; set; }
     [ObservableProperty] public partial bool WindowFirewallEnabled { get; set; }
     [ObservableProperty] public partial string ToolkitStatus { get; set; } = "Desktop tools ready";
-    [ObservableProperty] public partial string BrowserStatus { get; set; } = "Browser extension: not connected";
+    [ObservableProperty] public partial string BrowserStatus { get; set; } = "Focused browser: not open";
     [ObservableProperty] public partial bool IsBrowserConnected { get; set; }
     [ObservableProperty] public partial string ImageBlurStatus { get; set; } = "Image blur: off";
     [ObservableProperty] public partial CameraDevice? SelectedCamera { get; set; }
@@ -681,6 +685,22 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     /// to judge. Only composing activities are considered: elsewhere the keyboard is shortcuts and
     /// search boxes, where "not a word" means nothing.
     /// </summary>
+    /// <summary>
+    /// Whether this window's fresh reading of the screen shows different text from the last one,
+    /// so typed characters can be seen to have landed. Null when nothing was read this tick.
+    /// </summary>
+    private bool? ResolveScreenTextChanged(ScreenSnapshot? screen)
+    {
+        if (screen is null)
+        {
+            return null;
+        }
+
+        var changed = !string.Equals(screen.ContentHash, _lastKeyboardScreenHash, StringComparison.Ordinal);
+        _lastKeyboardScreenHash = screen.ContentHash;
+        return changed;
+    }
+
     private string? ResolveTypedText(ActivityKind activity, SensorWindow raw, ScreenSnapshot? screen)
     {
         if (activity is not (ActivityKind.Coding or ActivityKind.Writing)
@@ -1342,6 +1362,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 now);
             _lastSecureWindow = raw.IsSecureWindow;
             await ApplyToolkitStateAsync();
+            await RefreshPageContextAsync(now);
             var gaze = _sessionGazeActive
                 ? await _services.Inference.ReadGazeAsync()
                 : null;
@@ -1403,12 +1424,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     keyCount: raw.KeyCount,
                     scrollReversalCount: raw.ScrollReversalCount,
                     mouseDistance: raw.MouseDistance,
-                    isScrollBurst: _attentionFusion.LastScrollThrashSustained));
+                    isScrollBurst: _attentionFusion.LastScrollThrashSustained,
+                    isPointerFidget: _attentionFusion.LastAimlessMouseSustained));
                 _ = JudgeScreenProgressAsync(raw);
             }
+            // Fidgeting with the cursor is movement without work, so it does not count as progress.
             var progressObserved = raw.KeyCount > 0
-                || raw.MouseDistance >= 4
-                || raw.ScrollReversalCount > 0;
+                || raw.ScrollReversalCount > 0
+                || (raw.MouseDistance >= 4 && !_attentionFusion.LastAimlessMouseSustained);
             var activity = ActivityClassifier.Infer(
                 context.ProcessName,
                 context.WindowTitle,
@@ -1433,7 +1456,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 scrollNotchCount: raw.ScrollNotchCount,
                 navigationKeyCount: _services.Sensors.LastNavigationKeyCount,
                 activity: activity,
-                typedText: ResolveTypedText(activity, raw, visibleText)));
+                typedText: ResolveTypedText(activity, raw, visibleText),
+                mouseNetDistance: _services.Sensors.LastMouseNetDistance,
+                mouseDirectionChanges: _services.Sensors.LastMouseDirectionChanges,
+                mouseClickCount: _services.Sensors.LastMouseClickCount,
+                keyStrokes: _services.Sensors.LastKeyStrokes,
+                screenTextChanged: ResolveScreenTextChanged(screen),
+                hasTextCaret: _services.Sensors.LastHasTextCaret));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
             await _services.Overlays.UpdateAttentionAsync(prediction);
             ApplyPrediction(prediction, AttentionAnalyzer.DescribePlace(context.ProcessName, context.Domain));
@@ -1708,6 +1737,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     ? "Desktop tools off"
                     : "Desktop tools arm when a focus session starts";
             }
+            await ApplyPageEditsAsync();
             UpdateBrowserStatus();
         }
         catch (Exception error)
@@ -1716,9 +1746,76 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Pushes the page tools into the live browser over its DevTools endpoint. Nothing happens
+    /// until the user opens the focused browser, and turning the tools off restores every page.
+    /// </summary>
+    private async Task ApplyPageEditsAsync()
+    {
+        var wantsEdits = IsRunning
+            && (BlurImagesEnabled || RemovePageClutterEnabled || SimplifyPageTextEnabled);
+        var request = wantsEdits
+            ? new PageEditRequest(
+                PixelateOffTaskPictures: BlurImagesEnabled,
+                DeleteOffTaskBlocks: RemovePageClutterEnabled,
+                SimplifySentences: SimplifyPageTextEnabled,
+                Threshold: 0.5,
+                MaxWords: 28,
+                Keywords: TaskEvidenceMatcher.Keywords(TaskTitle, CurrentSubtask).ToArray())
+            : PageEditRequest.Off;
+        // The tick calls this constantly; the browser is only touched when something changed.
+        var fingerprint = ChromeDevToolsBridge.BuildState(request);
+        if (string.Equals(fingerprint, _lastPageEdit, StringComparison.Ordinal)
+            || !await _services.PageBridge.IsAvailableAsync())
+        {
+            return;
+        }
+
+        _lastPageEdit = fingerprint;
+        if (wantsEdits)
+        {
+            await _services.PageBridge.ApplyAsync(request);
+        }
+        else
+        {
+            await _services.PageBridge.ClearAsync();
+        }
+    }
+
+    /// <summary>
+    /// Asks the focused browser where the user is in the page, so the recovery card can name the
+    /// site and how far they had read without any extension reporting it.
+    /// </summary>
+    private async Task RefreshPageContextAsync(DateTimeOffset now)
+    {
+        if (now - _lastPageContextRead < ScreenReadInterval || !_services.PageBridge.IsConnected)
+        {
+            return;
+        }
+
+        _lastPageContextRead = now;
+        foreach (var message in await _services.PageBridge.ReadPageContextAsync())
+        {
+            _services.BrowserContext.Apply(message);
+        }
+    }
+
+    /// <summary>Opens (or re-uses) the browser Anchor can edit, so no extension is needed.</summary>
+    [RelayCommand]
+    private async Task OpenFocusedBrowserAsync()
+    {
+        var opened = await _services.PageBridge.LaunchAsync();
+        if (opened)
+        {
+            await ApplyPageEditsAsync();
+        }
+
+        UpdateBrowserStatus();
+    }
+
     private void UpdateBrowserStatus()
     {
-        IsBrowserConnected = _services.BrowserBridge.IsConnected;
+        IsBrowserConnected = _services.PageBridge.IsConnected;
         var wanted = new List<string>();
         if (BlurImagesEnabled) wanted.Add("image blur");
         if (HideFutureTextEnabled) wanted.Add("future-text mask");
@@ -1727,8 +1824,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         if (SimplifyPageTextEnabled) wanted.Add("sentences trimmed");
         var features = wanted.Count == 0 ? "no page tools selected" : string.Join(", ", wanted);
         BrowserStatus = IsBrowserConnected
-            ? $"Browser extension connected · {features} also applied inside web pages"
-            : "Image blur works without any extension: it captures the front window (Chrome, Edge, Firefox, Word, PDF viewers), finds photo-like regions in the pixels and softens only those areas. Loading browser\\anchor-extension additionally enables future-text masking and animation pause inside web pages.";
+            ? $"{_services.PageBridge.Status} · {features} applied by editing the page itself"
+            : "Press Open focused browser and Anchor edits the pages you open in Chrome or Edge directly — no extension to install. Until then, image blur still works on the front window by softening photo-like regions in the captured pixels.";
     }
 
     [DllImport("user32.dll")]

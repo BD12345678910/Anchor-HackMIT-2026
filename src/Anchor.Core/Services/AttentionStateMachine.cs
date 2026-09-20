@@ -153,10 +153,24 @@ public sealed class AttentionStateMachine
             reasons.Add("scroll_loop");
         }
 
-        evidence += Math.Clamp(window.MouseDistance / 250, 0, 1) * 0.08;
-        if (window.MouseDistance >= 200)
+        // Distance on its own says nothing: dragging a window across two monitors covers more
+        // ground than any amount of fidgeting. What counts is travel that arrives nowhere, or a
+        // click rate no interface asks for, both of which the analyzer has to see for a few
+        // seconds before it reports them.
+        if (window.AimlessMouseSustained)
         {
+            evidence += 0.2;
             reasons.Add("pointer_wandering");
+        }
+        else
+        {
+            evidence += Math.Clamp(window.MouseDistance / 600, 0, 1) * 0.04;
+        }
+
+        if (window.MouseClickCount >= 12 && window.KeyCount < MouseBehaviorAnalyzer.TypingKeyCount)
+        {
+            evidence += 0.1;
+            reasons.Add("click_mashing");
         }
 
         if (window.GazeAvailable && window.GazeAwaySustained)
@@ -171,6 +185,14 @@ public sealed class AttentionStateMachine
             reasons.Add("no_progress_sustained");
         }
 
+        // Characters going nowhere: typed into a page that accepts none, or a run of keys that do
+        // nothing. The shape of the keystrokes says this even where no text can be read back.
+        if (window.RandomTypingSustained)
+        {
+            evidence += 0.2;
+            reasons.Add("random_typing");
+        }
+
         // Text arriving with no words in it is the opposite of thinking: keyboard mashing, a held
         // key, or typing into the wrong place entirely.
         if (window.GibberishTyping)
@@ -178,7 +200,7 @@ public sealed class AttentionStateMachine
             evidence += 0.3;
             reasons.Add("gibberish_typing");
         }
-        else if (window.KeyCount > 0 && window.AppRelevance >= 0.5)
+        else if (!window.RandomTypingSustained && window.KeyCount > 0 && window.AppRelevance >= 0.5)
         {
             evidence -= Math.Clamp(window.KeyCount / 10d, 0, 1) * 0.08;
         }

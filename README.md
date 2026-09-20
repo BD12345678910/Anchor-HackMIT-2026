@@ -23,15 +23,38 @@ Safety controls:
 ## Implemented system
 
 - Computer-vision gaze estimation using OpenCV and MediaPipe, with camera discovery, live preview, adjustable calibration, confidence, face-presence, and fail-open behavior.
-- Multimodal attention fusion across gaze, foreground app and redacted title, semantic relevance, idle time, app switches, mouse distance, scroll reversals, and keyboard-category counts. Raw keys are never stored.
+- Multimodal attention fusion across gaze, foreground app and redacted title, semantic relevance, idle time, app switches, mouse behaviour, scroll bursts, and keyboard behaviour including typing into a page that accepts no input. Raw keys are never stored.
 - DeepSeek-powered goal decomposition, subtask breakdown, and task-relevance classification, with timeouts and deterministic fallback.
 - A Goal Beacon that shows the current subtask, advances when the user completes a step, and pulses/shakes when sustained evidence indicates drift.
-- Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, dynamic browser image blur, future-text masking, and reversible animation suppression.
+- Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, dynamic browser image blur, future-text masking, reversible animation suppression, and reversible HTML edits that delete off-task blocks and trim sentences in the focused browser.
 - Passive recovery: a Context Capsule saves the most recent safe task anchor before distraction. Manual and automatic recovery can show the prior location, last action, next step, recap, reopen, and smaller-step controls.
 - Reading support: progress tracking, large-skip detection, and repeated-phrase dwell detection.
 - Local study recording: Display 1 at 15 FPS with gaze point and task state composited into MP4, plus aligned event JSONL, gaze/sample CSV, summary JSON, and manifest JSON. Baseline mode senses but suppresses interventions.
 - A **Compare recordings** control that compares one baseline and one Anchor-enabled summary without claiming clinical significance.
 - Local SQLite timeline and focus/recovery metrics, protected-window suppression, authenticated local IPC, watchdog release, and deterministic replay scenarios.
+
+## What the distraction decision actually uses
+
+Every signal below is collected and reaches `AttentionFusion` → `AttentionStateMachine`; nothing in this
+list is decorative.
+
+| Signal | How it is collected | How it is used |
+| --- | --- | --- |
+| Foreground app and window title | `GetForegroundWindow` + redacted title | Relevance against the goal; app switches count as churn |
+| Page/window semantic relevance | On-screen OCR text graded by DeepSeek (cached per page) | Main relevance term; local keyword rules only without a key |
+| On-screen text and pictures | `Windows.Media.Ocr` + screen capture, pictures graded by the vision model | Sentence/picture treatment and progress evidence |
+| Step progress | Screen evidence matched to the current step | Removes distraction evidence, auto-ticks the step |
+| Idle time | Raw input timestamps | Distraction, with 30 s thinking tolerance while coding/writing/problem-solving |
+| Scrolling | Raw input wheel notches and direction flips | Fast/erratic scroll bursts; anchors the reminder to the page before the burst |
+| Mouse motion and clicks | Raw input path length, net displacement, direction changes, click rate | Aimless drift and click mashing |
+| Keyboard | Per-category key counts (letters, digits, navigation, editing, modifiers, function) — raw keys are never stored | Typing quality (gibberish) and random typing: bursts while the foreground window has no text caret and the screen text does not change |
+| Text caret presence | `GetGUIThreadInfo` on the foreground thread | Separates typing into an editor from typing into a page that accepts no input |
+| Browser page and reading position | DevTools `Runtime.evaluate` in the focused browser | Recovery card location, reading progress and skips |
+| Gaze | Worker eye-region estimation, only when a camera is open and confidence is sufficient | Sustained gaze away from the task region; missing gaze is never treated as distraction |
+| Manual reports | Beacon and recovery controls | Direct evidence, and marks a window relevant |
+
+Worker or camera unavailability is reported as a capability state and never counted as evidence of
+distraction.
 
 ## Architecture
 
@@ -71,20 +94,15 @@ flowchart LR
 
 The desktop host and browser native bridge are self-contained .NET executables. The CV/recording worker is a bundled one-file Python executable. Their protocol version and a random per-launch authentication token are checked before use.
 
-## Browser adapter
+## Browser pages
 
-1. Open `chrome://extensions` or `edge://extensions`.
-2. Enable developer mode, select **Load unpacked**, and choose `browser-extension` from the release folder (or `browser/anchor-extension` in the repository).
-3. Copy the extension ID shown by the browser.
-4. In PowerShell, from the release folder, run:
+Press **Open focused browser** on the Tools page. Anchor starts Chrome or Edge in its own profile with a
+local DevTools port and edits the pages you open there directly: off-task blocks are emptied while keeping
+their height, long or unrelated sentences are trimmed, and distracting pictures are swapped for a
+low-resolution copy. Turning the tools off, or ending the session, restores the original markup. Nothing is
+installed and there is no extension to load.
 
-```powershell
-.\register-browser-bridge.ps1 -ExtensionId YOUR_32_CHARACTER_EXTENSION_ID
-```
-
-5. Click the Anchor extension once on each site where support should be enabled. Permission is opt-in per origin and survives navigation on that origin.
-
-The extension excludes browser-internal pages, password/payment/editable fields, dialogs, media, and user-denied origins. Remove the native registration with `./unregister-browser-bridge.ps1`.
+Browser-internal pages and password/payment pages are never edited.
 
 ## Build from source
 
@@ -126,7 +144,8 @@ src/Anchor.Infrastructure   DeepSeek, persistence, Windows sensors, IPC, safety
 src/Anchor.Desktop          WinUI Settings, tray lifecycle, overlays, recording UI
 src/Anchor.Worker           camera gaze and screen-recording worker
 src/Anchor.NativeBridge     browser-to-desktop native messaging adapter
-browser/anchor-extension    DOM-aware browser support
+browser/anchor-page-agent   page edits injected over the DevTools protocol
+browser/anchor-extension    legacy DOM-aware browser support (optional)
 tests                       C# unit and integration tests
 demo/replay                 reproducible scenarios
 docs                        design, privacy, and demo documentation
@@ -136,7 +155,7 @@ scripts                     build, verification, demo, and bridge setup
 ## Honest prototype limits
 
 - The release is unsigned; Windows may display an unknown-publisher warning.
-- Browser DOM controls require the unpacked extension and native-host registration.
+- Browser DOM editing requires the focused browser Anchor launches; pages opened in another browser profile are only treated by the desktop pixel overlay.
 - Object-level picture blur is available in browser pages; desktop apps receive safe dimming/spotlight overlays rather than OCR-based object segmentation.
 - Webcam video and audio are not recorded. The camera is used live for gaze inference; recording captures the desktop, gaze marker, task state, and structured events.
 - Gaze quality depends on lighting, camera placement, eyewear, and calibration. Missing or low-confidence gaze becomes `Unknown`; it is not treated as proof of distraction.

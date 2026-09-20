@@ -25,6 +25,21 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
     /// <summary>Page-up/page-down/arrow presses in that window; they scroll rather than type.</summary>
     public int LastNavigationKeyCount { get; private set; }
 
+    /// <summary>Straight-line cursor displacement over the window, against the path length.</summary>
+    public double LastMouseNetDistance { get; private set; }
+
+    /// <summary>How often the cursor turned around on either axis in that window.</summary>
+    public int LastMouseDirectionChanges { get; private set; }
+
+    /// <summary>Button presses in that window, for the click-mashing detector.</summary>
+    public int LastMouseClickCount { get; private set; }
+
+    /// <summary>Keys in that window split by what they do, for the random-typing detector.</summary>
+    public KeyStrokeCounts LastKeyStrokes { get; private set; } = KeyStrokeCounts.Empty;
+
+    /// <summary>Whether the front window offers a caret to type into; null when unknown.</summary>
+    public bool? LastHasTextCaret { get; private set; }
+
     public WindowsSensorCoordinator(BrowserContextTracker? browserContext = null)
     {
         _browserContext = browserContext;
@@ -90,6 +105,18 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
 
         LastScrollNotchCount = ParseInt(inputEvent, "scroll_notch_count");
         LastNavigationKeyCount = ParseInt(inputEvent, "key_navigation_count");
+        LastMouseNetDistance = ParseDouble(inputEvent, "mouse_net_distance");
+        LastMouseDirectionChanges = ParseInt(inputEvent, "mouse_direction_changes");
+        LastMouseClickCount = ParseInt(inputEvent, "mouse_click_count");
+        LastKeyStrokes = new KeyStrokeCounts(
+            Letters: ParseInt(inputEvent, "key_letter_count"),
+            Digits: ParseInt(inputEvent, "key_digit_count"),
+            Navigation: LastNavigationKeyCount,
+            Editing: ParseInt(inputEvent, "key_editing_count"),
+            Modifiers: ParseInt(inputEvent, "key_modifier_count"),
+            Function: ParseInt(inputEvent, "key_function_count"),
+            Other: ParseInt(inputEvent, "key_other_count"));
+        LastHasTextCaret = TextCaretSensor.HasTextCaret();
 
         return SensorWindow.Create(
             keyCount: ParseInt(inputEvent, "key_count"),
@@ -102,7 +129,8 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             isSecureWindow: secure,
             isWorkerAvailable: workerAvailable,
             timestamp: now,
-            scrollNotchCount: LastScrollNotchCount);
+            scrollNotchCount: LastScrollNotchCount,
+            mouseClickCount: LastMouseClickCount);
     }
 
     /// <summary>Feeds raw input to the active session (if any) and returns the key-down virtual key.</summary>
@@ -121,7 +149,8 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         int keyCount = 0,
         int scrollReversalCount = 0,
         double mouseDistance = 0,
-        bool isScrollBurst = false)
+        bool isScrollBurst = false,
+        bool isPointerFidget = false)
     {
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
@@ -176,7 +205,8 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             DocumentPosition: screenIsFresh
                 ? DocumentPositionReader.DescribePage(screen!.Lines, browser?.Title ?? title)
                 : DocumentPositionReader.DescribePage(null, browser?.Title ?? title),
-            IsScrollBurst: isScrollBurst);
+            IsScrollBurst: isScrollBurst,
+            IsPointerFidget: isPointerFidget);
     }
 
     public TaskContext CreateTaskContext(
