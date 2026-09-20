@@ -11,7 +11,9 @@ public sealed record ToolPreferences(
     bool PointerGuard = false,
     bool GazeSpotlight = false,
     bool WindowFirewall = false,
-    bool ReducedMotion = false);
+    bool ReducedMotion = false,
+    bool RemovePageClutter = false,
+    bool SimplifyPageText = false);
 
 /// <summary>Plain JSON store for non-secret tool toggles; DeepSeek settings stay in their encrypted store.</summary>
 public sealed class ToolPreferencesStore

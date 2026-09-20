@@ -168,6 +168,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool BlurImagesEnabled { get; set; } = true;
     [ObservableProperty] public partial bool HideFutureTextEnabled { get; set; } = true;
     [ObservableProperty] public partial bool SuppressAnimationsEnabled { get; set; }
+    [ObservableProperty] public partial bool RemovePageClutterEnabled { get; set; }
+    [ObservableProperty] public partial bool SimplifyPageTextEnabled { get; set; }
     [ObservableProperty] public partial bool AudioShieldEnabled { get; set; }
     [ObservableProperty] public partial bool PointerGuardEnabled { get; set; }
     [ObservableProperty] public partial bool IsPlanReady { get; set; }
@@ -225,6 +227,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     partial void OnBlurImagesEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnHideFutureTextEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnSuppressAnimationsEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnRemovePageClutterEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnSimplifyPageTextEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnPointerGuardEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnGazeSpotlightEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnWindowFirewallEnabledChanged(bool value) => ToolPreferenceChanged();
@@ -260,7 +264,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 PointerGuardEnabled,
                 GazeSpotlightEnabled,
                 WindowFirewallEnabled,
-                ReducedMotion));
+                ReducedMotion,
+                RemovePageClutterEnabled,
+                SimplifyPageTextEnabled));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -297,6 +303,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             GazeSpotlightEnabled = saved.GazeSpotlight;
             WindowFirewallEnabled = saved.WindowFirewall;
             ReducedMotion = saved.ReducedMotion;
+            RemovePageClutterEnabled = saved.RemovePageClutter;
+            SimplifyPageTextEnabled = saved.SimplifyPageText;
         }
         finally
         {
@@ -1687,7 +1695,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 secureWindow: _lastSecureWindow,
                 browserImageBlur: BlurImagesEnabled,
                 browserFutureTextMask: HideFutureTextEnabled,
-                browserAnimationSuppression: SuppressAnimationsEnabled));
+                browserAnimationSuppression: SuppressAnimationsEnabled,
+                browserClutterRemoval: RemovePageClutterEnabled,
+                browserTextSimplification: SimplifyPageTextEnabled,
+                taskKeywords: string.Join(' ', TaskEvidenceMatcher.Keywords(TaskTitle, CurrentSubtask))));
             ToolkitStatus = string.Join(" · ", results
                 .Where(static result => result.Status != "Off")
                 .Select(static result => $"{result.Feature}: {result.Status}"));
@@ -1712,6 +1723,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         if (BlurImagesEnabled) wanted.Add("image blur");
         if (HideFutureTextEnabled) wanted.Add("future-text mask");
         if (SuppressAnimationsEnabled) wanted.Add("animation pause");
+        if (RemovePageClutterEnabled) wanted.Add("off-task blocks deleted");
+        if (SimplifyPageTextEnabled) wanted.Add("sentences trimmed");
         var features = wanted.Count == 0 ? "no page tools selected" : string.Join(", ", wanted);
         BrowserStatus = IsBrowserConnected
             ? $"Browser extension connected · {features} also applied inside web pages"

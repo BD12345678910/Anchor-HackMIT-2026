@@ -20,12 +20,31 @@ test("disabling an origin survives paths and duplicate entries", () => {
 
 test("desktop toolkit state becomes independent page commands", () => {
   const messages = messagesForToolkitState(
-    { imageBlur: false, futureTextMask: true, suppressAnimations: true, lookahead: 2 },
+    {
+      imageBlur: false,
+      futureTextMask: true,
+      suppressAnimations: true,
+      lookahead: 2,
+      clutterRemoval: true,
+      simplifyText: true,
+      taskKeywords: ["cats"],
+    },
     { threshold: 0.7 },
   );
   assert.deepEqual(messages, [
     { command: "setVisualFilter", enabled: false, threshold: 0.7 },
     { command: "setFutureTextMask", enabled: true, lookahead: 2 },
     { command: "setAnimationSuppression", enabled: true },
+    { command: "setClutterRemoval", enabled: true, keywords: ["cats"] },
+    { command: "setTextSimplification", enabled: true, maxWords: 28, keywords: ["cats"] },
   ]);
+});
+
+test("page editing stays off until the desktop asks for it", () => {
+  const messages = messagesForToolkitState({}, {});
+  assert.deepEqual(
+    messages.filter((message) => ["setClutterRemoval", "setTextSimplification"].includes(message.command))
+      .map((message) => message.enabled),
+    [false, false],
+  );
 });

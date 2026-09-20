@@ -20,7 +20,10 @@ public sealed record ToolkitState(
     bool BrowserImageBlur = true,
     bool BrowserFutureTextMask = true,
     bool BrowserAnimationSuppression = false,
-    bool ImageBlur = false)
+    bool ImageBlur = false,
+    bool BrowserClutterRemoval = false,
+    bool BrowserTextSimplification = false,
+    string TaskKeywords = "")
 {
     public static ToolkitState Off { get; } = new(false, false, false, false, BrowserImageBlur: false, BrowserFutureTextMask: false);
 
@@ -33,7 +36,10 @@ public sealed record ToolkitState(
         bool secureWindow,
         bool browserImageBlur,
         bool browserFutureTextMask,
-        bool browserAnimationSuppression) =>
+        bool browserAnimationSuppression,
+        bool browserClutterRemoval = false,
+        bool browserTextSimplification = false,
+        string taskKeywords = "") =>
         new(
             sessionActive && gazeSpotlight,
             sessionActive && peripheralDim,
@@ -43,7 +49,10 @@ public sealed record ToolkitState(
             browserImageBlur,
             browserFutureTextMask,
             browserAnimationSuppression,
-            ImageBlur: sessionActive && browserImageBlur);
+            ImageBlur: sessionActive && browserImageBlur,
+            BrowserClutterRemoval: sessionActive && browserClutterRemoval,
+            BrowserTextSimplification: sessionActive && browserTextSimplification,
+            TaskKeywords: taskKeywords);
 }
 
 public sealed record ToolkitApplyResult(

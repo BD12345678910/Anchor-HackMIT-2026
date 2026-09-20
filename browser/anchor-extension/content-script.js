@@ -6,8 +6,34 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAnchorFocusEngine() {
   const MASK_CLASS = "anchor-future-mask";
   const FILTERED_ATTRIBUTE = "anchorFiltered";
+  const REMOVED_ATTRIBUTE = "anchorRemoved";
   const ICON_LIMIT_PX = 160;
   const DEFAULT_THRESHOLD = 0.5;
+  const DEFAULT_MAX_WORDS = 28;
+  const DEFAULT_PIXEL_FACTOR = 12;
+  const SENTENCE_PATTERN = /[^.!?]+[.!?]*/g;
+  const CLUTTER_SELECTORS = [
+    "aside",
+    "[role='complementary']",
+    "[id*='comment' i]",
+    "[class*='comment' i]",
+    "[id*='recommend' i]",
+    "[class*='recommend' i]",
+    "[class*='related' i]",
+    "[class*='sidebar' i]",
+    "[id*='sidebar' i]",
+    "[class*='promo' i]",
+    "[class*='newsletter' i]",
+    "[class*='trending' i]",
+    "[id*='ad-' i]",
+    "[class*='advert' i]",
+    "[aria-label*='advertisement' i]",
+    "ins.adsbygoogle",
+    "iframe[src*='doubleclick']",
+    "iframe[src*='googlesyndication']",
+    "#secondary",
+    "ytd-watch-next-secondary-results-renderer",
+  ];
 
   function clamp(value) {
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -77,6 +103,11 @@
       });
       image.dataset.anchorDistractionScore = score.toFixed(3);
       if (score < threshold || image.dataset[FILTERED_ATTRIBUTE] === "true") continue;
+      if (options.rewriteSource
+        && downscaleImageSource(image, { factor: options.pixelFactor, createCanvas: options.createCanvas })) {
+        changed += 1;
+        continue;
+      }
       image.dataset.anchorOriginalFilter = image.style.filter ?? "";
       image.dataset[FILTERED_ATTRIBUTE] = "true";
       image.classList.add("anchor-image-filtered");
@@ -85,6 +116,171 @@
       changed += 1;
     }
     return changed;
+  }
+
+  /**
+   * Deletes the page furniture that has nothing to do with the task (ads, recommendation rails,
+   * comment threads, sidebars) instead of only dimming it. Blocks whose text mentions the task
+   * keywords stay. The emptied block keeps its measured height so the surrounding layout does not
+   * jump, and its markup is parked in a data attribute for `restoreRemovedElements`.
+   */
+  function removeOffTaskElements(root, options = {}) {
+    const selectors = [...CLUTTER_SELECTORS, ...(options.selectors ?? [])];
+    const keywords = (options.keywords ?? [])
+      .map((keyword) => String(keyword).toLowerCase().trim())
+      .filter((keyword) => keyword.length >= 3);
+    const mentionsTask = (element) => {
+      const text = String(element.textContent ?? "").toLowerCase();
+      return keywords.some((keyword) => text.includes(keyword));
+    };
+    const reading = root.querySelector?.("main, article, [role='main']") ?? null;
+    let removed = 0;
+    for (const element of new Set(selectors.flatMap((selector) => {
+      try { return [...root.querySelectorAll(selector)]; } catch (_error) { return []; }
+    }))) {
+      if (shouldExcludeElement(element)) continue;
+      if (element.dataset?.[REMOVED_ATTRIBUTE] === "true") continue;
+      if (reading && (element === reading || element.contains?.(reading))) continue;
+      if (mentionsTask(element)) continue;
+      const height = element.getBoundingClientRect?.().height ?? 0;
+      element.dataset.anchorOriginalHtml = element.innerHTML ?? "";
+      element.dataset.anchorOriginalHeight = element.style.height ?? "";
+      element.dataset[REMOVED_ATTRIBUTE] = "true";
+      element.innerHTML = "";
+      if (height > 0) element.style.height = `${Math.round(height)}px`;
+      removed += 1;
+    }
+    return removed;
+  }
+
+  function restoreRemovedElements(root) {
+    let restored = 0;
+    for (const element of root.querySelectorAll("[data-anchor-removed='true']")) {
+      element.innerHTML = element.dataset.anchorOriginalHtml ?? "";
+      element.style.height = element.dataset.anchorOriginalHeight ?? "";
+      delete element.dataset.anchorOriginalHtml;
+      delete element.dataset.anchorOriginalHeight;
+      delete element.dataset[REMOVED_ATTRIBUTE];
+      restored += 1;
+    }
+    return restored;
+  }
+
+  /**
+   * Replaces a picture's bytes with a low-resolution version of itself instead of only filtering it
+   * in CSS, which survives repaints and sites that reset styles. The element keeps its box size, so
+   * the layout does not move. Returns false for cross-origin or not-yet-decoded images, leaving the
+   * caller to fall back to the CSS filter.
+   */
+  function downscaleImageSource(image, options = {}) {
+    const factor = Math.max(2, Math.round(options.factor ?? DEFAULT_PIXEL_FACTOR));
+    const createCanvas = options.createCanvas
+      ?? (() => (typeof document === "undefined" ? null : document.createElement("canvas")));
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    const canvas = width > 0 && height > 0 ? createCanvas() : null;
+    const context = canvas?.getContext?.("2d");
+    if (!context) return false;
+    canvas.width = Math.max(1, Math.round(width / factor));
+    canvas.height = Math.max(1, Math.round(height / factor));
+    context.imageSmoothingEnabled = false;
+    let source = "";
+    try {
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      source = canvas.toDataURL("image/jpeg", 0.5);
+    } catch (_error) {
+      return false;
+    }
+    if (!source) return false;
+    const rectangle = image.getBoundingClientRect?.() ?? { width: 0, height: 0 };
+    image.dataset.anchorOriginalSrc = image.getAttribute?.("src") ?? image.src ?? "";
+    image.dataset.anchorOriginalImageRendering = image.style.imageRendering ?? "";
+    image.dataset.anchorPixelated = "true";
+    if (rectangle.width > 0 && !image.style.width) image.style.width = `${Math.round(rectangle.width)}px`;
+    if (rectangle.height > 0 && !image.style.height) image.style.height = `${Math.round(rectangle.height)}px`;
+    image.style.imageRendering = "pixelated";
+    if (image.setAttribute) image.setAttribute("src", source); else image.src = source;
+    return true;
+  }
+
+  function restorePixelatedImages(root) {
+    let restored = 0;
+    for (const image of root.querySelectorAll("[data-anchor-pixelated='true']")) {
+      const original = image.dataset.anchorOriginalSrc ?? "";
+      if (image.setAttribute) image.setAttribute("src", original); else image.src = original;
+      image.style.imageRendering = image.dataset.anchorOriginalImageRendering ?? "";
+      delete image.dataset.anchorOriginalSrc;
+      delete image.dataset.anchorOriginalImageRendering;
+      delete image.dataset.anchorPixelated;
+      restored += 1;
+    }
+    return restored;
+  }
+
+  function splitSentences(text) {
+    return (String(text ?? "").match(SENTENCE_PATTERN) ?? [])
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+  }
+
+  /** Keeps the leading clauses of an overlong sentence and marks the cut with an ellipsis. */
+  function shortenSentence(sentence, maxWords = DEFAULT_MAX_WORDS) {
+    const words = sentence.split(/\s+/);
+    if (words.length <= maxWords) return sentence;
+    const clauses = sentence.split(/(?<=[,;:—])\s+/);
+    let kept = clauses[0];
+    for (let index = 1; index < clauses.length && kept.split(/\s+/).length < Math.min(maxWords, 12); index++) {
+      kept = `${kept} ${clauses[index]}`;
+    }
+    return `${kept.split(/\s+/).slice(0, maxWords).join(" ").replace(/[,;:—-]$/, "")}…`;
+  }
+
+  /**
+   * Rewrites the paragraph text itself: sentences that never mention the task are deleted and
+   * overlong ones are cut down to their leading clauses. The paragraph's measured height is pinned
+   * as `min-height` so shortening text never reflows the page, and the original markup is kept in a
+   * data attribute for `restoreRewrittenText`.
+   */
+  function rewriteSentences(root, options = {}) {
+    const keywords = (options.keywords ?? [])
+      .map((keyword) => String(keyword).toLowerCase().trim())
+      .filter((keyword) => keyword.length >= 3);
+    const maxWords = Math.max(8, options.maxWords ?? DEFAULT_MAX_WORDS);
+    let changed = 0;
+    for (const element of paragraphCandidates(root)) {
+      if (element.dataset?.anchorRewritten === "true") continue;
+      const original = String(element.textContent ?? "").trim();
+      const sentences = splitSentences(original);
+      if (sentences.length === 0) continue;
+      const kept = sentences
+        .filter((sentence) => keywords.length === 0
+          || keywords.some((keyword) => sentence.toLowerCase().includes(keyword)))
+        .map((sentence) => shortenSentence(sentence, maxWords));
+      const next = kept.join(" ").trim();
+      if (next === original) continue;
+      const height = element.getBoundingClientRect?.().height ?? 0;
+      element.dataset.anchorOriginalHtml = element.innerHTML ?? original;
+      element.dataset.anchorOriginalMinHeight = element.style.minHeight ?? "";
+      element.dataset.anchorRewritten = "true";
+      if (height > 0) element.style.minHeight = `${Math.round(height)}px`;
+      element.innerHTML = "";
+      element.textContent = next;
+      changed += 1;
+    }
+    return changed;
+  }
+
+  function restoreRewrittenText(root) {
+    let restored = 0;
+    for (const element of root.querySelectorAll("[data-anchor-rewritten='true']")) {
+      element.innerHTML = element.dataset.anchorOriginalHtml ?? "";
+      element.style.minHeight = element.dataset.anchorOriginalMinHeight ?? "";
+      delete element.dataset.anchorOriginalHtml;
+      delete element.dataset.anchorOriginalMinHeight;
+      delete element.dataset.anchorRewritten;
+      restored += 1;
+    }
+    return restored;
   }
 
   function paragraphCandidates(root) {
@@ -160,6 +356,9 @@
       }
       element.classList.remove("anchor-image-filtered", MASK_CLASS, "anchor-recovery-anchor");
     }
+    restoreRemovedElements(root);
+    restoreRewrittenText(root);
+    restorePixelatedImages(root);
     applyAnimationSuppression(root, false);
   }
 
@@ -219,13 +418,33 @@
     if (isProtectedPage(location.href, signals)) return;
     injectStyles();
     const tracker = createReadingTracker((event) => chrome.runtime.sendMessage({ source: "anchor-content", event }));
-    let settings = { imageBlur: true, threshold: DEFAULT_THRESHOLD, futureTextMask: false, lookahead: 1, suppressAnimations: false };
+    let settings = {
+      imageBlur: true,
+      threshold: DEFAULT_THRESHOLD,
+      futureTextMask: false,
+      lookahead: 1,
+      suppressAnimations: false,
+      clutterRemoval: false,
+      clutterSelectors: [],
+      taskKeywords: [],
+      simplifyText: false,
+      maxWords: DEFAULT_MAX_WORDS,
+      rewriteImageSource: true,
+    };
     let currentParagraph = 0;
     let lastProgressSentAt = 0;
 
     const apply = () => {
-      if (settings.imageBlur) applyImageFiltering(document, { threshold: settings.threshold });
+      if (settings.imageBlur) {
+        applyImageFiltering(document, { threshold: settings.threshold, rewriteSource: settings.rewriteImageSource });
+      }
       if (settings.futureTextMask) maskFutureText(document, currentParagraph, settings);
+      if (settings.clutterRemoval) {
+        removeOffTaskElements(document, { selectors: settings.clutterSelectors, keywords: settings.taskKeywords });
+      }
+      if (settings.simplifyText) {
+        rewriteSentences(document, { keywords: settings.taskKeywords, maxWords: settings.maxWords });
+      }
       applyAnimationSuppression(document, settings.suppressAnimations);
     };
     let mutationTimer = null;
@@ -258,10 +477,31 @@
     chrome.runtime.onMessage.addListener((message, _sender, respond) => {
       if (message?.command === "setVisualFilter") {
         settings = { ...settings, imageBlur: message.enabled !== false, threshold: message.threshold ?? settings.threshold };
-        if (settings.imageBlur) apply(); else clearImageFilters(document);
+        if (settings.imageBlur) {
+          apply();
+        } else {
+          clearImageFilters(document);
+          restorePixelatedImages(document);
+        }
       } else if (message?.command === "setFutureTextMask") {
         settings = { ...settings, futureTextMask: Boolean(message.enabled), lookahead: message.lookahead ?? settings.lookahead };
         if (settings.futureTextMask) apply(); else clearFutureTextMasks(document);
+      } else if (message?.command === "setClutterRemoval") {
+        settings = {
+          ...settings,
+          clutterRemoval: Boolean(message.enabled),
+          clutterSelectors: message.selectors ?? settings.clutterSelectors,
+          taskKeywords: message.keywords ?? settings.taskKeywords,
+        };
+        if (settings.clutterRemoval) apply(); else restoreRemovedElements(document);
+      } else if (message?.command === "setTextSimplification") {
+        settings = {
+          ...settings,
+          simplifyText: Boolean(message.enabled),
+          maxWords: message.maxWords ?? settings.maxWords,
+          taskKeywords: message.keywords ?? settings.taskKeywords,
+        };
+        if (settings.simplifyText) apply(); else restoreRewrittenText(document);
       } else if (message?.command === "setAnimationSuppression") {
         settings = { ...settings, suppressAnimations: Boolean(message.enabled) };
         applyAnimationSuppression(document, settings.suppressAnimations);
@@ -273,9 +513,9 @@
         anchor?.classList.add("anchor-recovery-anchor");
         anchor?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       }
-      respond?.({ ok: true, tracker: tracker.snapshot(), capabilities: ["imageBlur", "futureTextMask", "animationSuppression", "recoveryAnchor"] });
+      respond?.({ ok: true, tracker: tracker.snapshot(), capabilities: ["imageBlur", "futureTextMask", "animationSuppression", "clutterRemoval", "textSimplification", "recoveryAnchor"] });
     });
-    chrome.storage.sync.get(["imageBlur", "threshold", "futureTextMask", "lookahead", "suppressAnimations"], (saved) => {
+    chrome.storage.sync.get(["imageBlur", "threshold", "futureTextMask", "lookahead", "suppressAnimations", "clutterRemoval", "simplifyText", "maxWords"], (saved) => {
       settings = { ...settings, ...saved };
       apply();
     });
@@ -293,6 +533,13 @@
     clearImageFilters,
     maskFutureText,
     clearFutureTextMasks,
+    removeOffTaskElements,
+    restoreRemovedElements,
+    rewriteSentences,
+    restoreRewrittenText,
+    shortenSentence,
+    downscaleImageSource,
+    restorePixelatedImages,
     applyAnimationSuppression,
     clearInterventions,
     createReadingTracker,

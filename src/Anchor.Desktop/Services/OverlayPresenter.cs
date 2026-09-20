@@ -98,7 +98,12 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 peripheralDim = state.PeripheralDim,
                 windowFirewall = state.WindowFirewall,
                 pointerGuard = state.PointerGuard,
-                secureWindow = state.SecureWindow
+                secureWindow = state.SecureWindow,
+                clutterRemoval = state.BrowserClutterRemoval,
+                simplifyText = state.BrowserTextSimplification,
+                taskKeywords = state.TaskKeywords.Split(
+                    ' ',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             }));
             EnableVisualFilter = state.PeripheralDim;
             EnablePointerGuard = state.PointerGuard;
