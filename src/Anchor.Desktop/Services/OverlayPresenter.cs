@@ -208,8 +208,12 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     }
                     break;
                 case AttentionState.Focused:
-                    // A gate the user is looking at stays; one left behind in the background is
-                    // dismissed once relevant work resumes, since Windows may never have let it take focus.
+                case AttentionState.Recovering:
+                case AttentionState.Drifting:
+                case AttentionState.Distracted:
+                    // Off-task treatments end once the foreground is task-relevant again, even if the
+                    // user is merely idle there. A gate the user is looking at stays; one left in the
+                    // background is dismissed, since Windows may never have let it take focus.
                     if (++_focusedTicks >= 2 && _previewTimer is null && (_gate is null || !_gate.IsActive))
                     {
                         Close(ref _gate);
