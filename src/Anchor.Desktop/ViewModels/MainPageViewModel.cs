@@ -163,6 +163,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string AttentionState { get; set; } = "Ready";
     [ObservableProperty] public partial string Confidence { get; set; } = "—";
     [ObservableProperty] public partial string ReasonSummary { get; set; } = "Start a task to begin private, on-device sensing.";
+    [ObservableProperty] public partial string PatienceStatus { get; set; } = "Interrupts when ≥ 65% sure · default, nothing learned yet";
     [ObservableProperty] public partial string FocusedDuration { get; set; } = "0m 00s";
     [ObservableProperty] public partial string RecoveryDuration { get; set; } = "0m 00s";
     [ObservableProperty] public partial int InterruptionCount { get; set; }
@@ -1609,6 +1610,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         CapabilityStatus = _sessionGazeActive
             ? $"{_services.Orchestrator.CapabilityStatus} · gaze live"
             : $"{_services.Orchestrator.CapabilityStatus} · no camera";
+        PatienceStatus = _services.Orchestrator.PatienceSummary;
 
         if (_services.Orchestrator.Progress is { } progress)
         {

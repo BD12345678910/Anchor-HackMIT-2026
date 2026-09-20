@@ -184,6 +184,13 @@
                                 </Border>
                             </Grid>
                             <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Learned from you" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.PatienceStatus, Mode=OneWay}" TextWrapping="Wrap" />
+                                    <TextBlock Text="&quot;Continue anyway&quot; and &quot;Park for later&quot; make Anchor wait longer; &quot;Return to task&quot; and &quot;Needed for my task&quot; make it speak up sooner." Style="{StaticResource Hint}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="8">
                                     <TextBlock Text="What is active right now" Style="{StaticResource CardTitle}" />
                                     <TextBlock Text="{x:Bind ViewModel.ToolkitStatus, Mode=OneWay}" TextWrapping="Wrap" />

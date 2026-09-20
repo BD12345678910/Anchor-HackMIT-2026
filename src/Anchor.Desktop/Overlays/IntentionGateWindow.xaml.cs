@@ -24,8 +24,9 @@ public sealed partial class IntentionGateWindow : Window
     public event EventHandler? DeliberateBreak;
     public event EventHandler? LostFocus;
 
-    public void SetPrompt(string task, string subtask, string reason)
+    public void SetPrompt(string task, string subtask, string reason, string patience)
     {
+        PatienceText.Text = $"{patience} — your answer here changes that.";
         TaskText.Text = task;
         SubtaskText.Text = string.IsNullOrWhiteSpace(subtask) ? "Choose the next small action" : $"Current step: {subtask}";
         ReasonText.Text = $"Anchor noticed: {reason.Replace('_', ' ')}";

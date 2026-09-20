@@ -14,7 +14,38 @@ public sealed class InterventionPolicy
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
+    private int _waitLonger;
+    private int _speakSooner;
+
     public double CurrentThreshold { get; private set; } = UserPreferences.Default.MinimumConfidence;
+
+    /// <summary>One line for the UI: how sure Anchor must be before interrupting, and what taught it that.</summary>
+    public string PatienceSummary
+    {
+        get
+        {
+            var head = CurrentThreshold >= 1
+                ? "Gates off — you turned them off"
+                : $"Interrupts when ≥ {CurrentThreshold:P0} sure";
+            if (_waitLonger == 0 && _speakSooner == 0)
+            {
+                return head + " · default, nothing learned yet";
+            }
+
+            var parts = new List<string>(2);
+            if (_waitLonger > 0)
+            {
+                parts.Add($"waits longer after {_waitLonger} × \"not now\"");
+            }
+
+            if (_speakSooner > 0)
+            {
+                parts.Add($"speaks sooner after {_speakSooner} × \"take me back\"");
+            }
+
+            return head + " · " + string.Join(", ", parts);
+        }
+    }
 
     public InterventionDecision Decide(
         AttentionPrediction prediction,
@@ -81,14 +112,22 @@ public sealed class InterventionPolicy
 
     public void RecordResponse(InterventionResponse response)
     {
-        CurrentThreshold = response switch
+        switch (response)
         {
-            InterventionResponse.Dismissed => Math.Min(0.9, CurrentThreshold + 0.05),
-            InterventionResponse.ReturnedToTask => Math.Max(0.55, CurrentThreshold - 0.02),
-            InterventionResponse.NeededForTask => Math.Max(0.55, CurrentThreshold - 0.02),
-            InterventionResponse.Disabled => 1,
-            _ => CurrentThreshold
-        };
+            case InterventionResponse.Dismissed:
+            case InterventionResponse.Snoozed:
+                _waitLonger++;
+                CurrentThreshold = Math.Min(0.9, CurrentThreshold + 0.05);
+                break;
+            case InterventionResponse.ReturnedToTask:
+            case InterventionResponse.NeededForTask:
+                _speakSooner++;
+                CurrentThreshold = Math.Max(0.55, CurrentThreshold - 0.02);
+                break;
+            case InterventionResponse.Disabled:
+                CurrentThreshold = 1;
+                break;
+        }
     }
 
     private static int Severity(InterventionKind kind) => kind switch

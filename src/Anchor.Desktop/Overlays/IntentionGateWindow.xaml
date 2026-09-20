@@ -15,6 +15,7 @@
                 </StackPanel>
             </Border>
             <TextBlock Text="Anchor pauses the detour; it never closes your apps." Foreground="#9EABC8" />
+            <TextBlock x:Name="PatienceText" Foreground="#FFC56E" TextWrapping="Wrap" FontSize="13" />
             <StackPanel Spacing="8" HorizontalAlignment="Right">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                     <Button Content="Disable gates" Click="Disable_Click" />
