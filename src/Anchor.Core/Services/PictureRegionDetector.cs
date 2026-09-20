@@ -23,6 +23,7 @@ public static class PictureRegionDetector
     private const int MinimumBlocks = 9;
     private const double MinimumFill = 0.45;
     private const double MinimumSeedShare = 0.2;
+    private const double FlatTintDeviation = 6;
 
     internal enum BlockKind : byte
     {
@@ -71,6 +72,8 @@ public static class PictureRegionDetector
         var midTones = 0;
         var colourful = 0;
         var paperWhite = 0;
+        long colourfulLuma = 0;
+        long colourfulLumaSquares = 0;
 
         for (var y = 0; y < BlockSize; y++)
         {
@@ -88,6 +91,8 @@ public static class PictureRegionDetector
                 if (chroma >= 40)
                 {
                     colourful++;
+                    colourfulLuma += luma;
+                    colourfulLumaSquares += luma * luma;
                 }
                 if (luma is >= 56 and <= 200)
                 {
@@ -98,6 +103,15 @@ public static class PictureRegionDetector
                     paperWhite++;
                 }
             }
+        }
+
+        // How varied the coloured pixels themselves are. Dark ink on a tinted navbox or table
+        // header leaves the coloured pixels as one flat tone; in a photograph they span many.
+        var colourfulDeviation = 0.0;
+        if (colourful > 0)
+        {
+            var mean = colourfulLuma / (double)colourful;
+            colourfulDeviation = Math.Sqrt(Math.Max(0, colourfulLumaSquares / (double)colourful - mean * mean));
         }
 
         var meanChroma = chromaSum / (double)pixels;
@@ -118,7 +132,7 @@ public static class PictureRegionDetector
         // Colour photos / illustrations: a real share of saturated pixels plus some texture. Dense
         // coloured text on paper (link lists, table cells) is colourful too, but keeps a large
         // paper-white share that photographs do not.
-        if (colourfulShare >= 0.35 && meanChroma >= 24 && paperShare < 0.3)
+        if (colourfulShare >= 0.35 && meanChroma >= 24 && paperShare < 0.3 && colourfulDeviation >= FlatTintDeviation)
         {
             return BlockKind.Picture;
         }

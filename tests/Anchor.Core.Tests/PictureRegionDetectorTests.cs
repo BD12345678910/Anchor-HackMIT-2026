@@ -17,6 +17,17 @@ public sealed class PictureRegionDetectorTests
     }
 
     [Fact]
+    public void Text_on_a_tinted_navbox_is_not_a_picture()
+    {
+        var frame = new Frame();
+        frame.FillText(0, 0, Width, Height);
+        frame.FillText(16, 96, 288, 64, 20, 20, 20, dense: true, 204, 204, 255);
+        frame.FillText(16, 160, 288, 32, 10, 60, 160, dense: false, 204, 204, 255);
+
+        Assert.Empty(PictureRegionDetector.Detect(frame.Pixels, Width, Height, frame.Stride));
+    }
+
+    [Fact]
     public void Dense_link_text_on_paper_is_not_a_picture()
     {
         var frame = new Frame();
@@ -108,7 +119,11 @@ public sealed class PictureRegionDetectorTests
         /// <summary>White paper with black glyph-like strokes every few pixels.</summary>
         public void FillText(int x, int y, int w, int h) => FillText(x, y, w, h, 20, 20, 20, dense: false);
 
-        public void FillText(int x, int y, int w, int h, byte r, byte g, byte b, bool dense)
+        public void FillText(int x, int y, int w, int h, byte r, byte g, byte b, bool dense) =>
+            FillText(x, y, w, h, r, g, b, dense, 250, 250, 250);
+
+        public void FillText(
+            int x, int y, int w, int h, byte r, byte g, byte b, bool dense, byte paperR, byte paperG, byte paperB)
         {
             for (var yy = y; yy < y + h; yy++)
             {
@@ -123,7 +138,7 @@ public sealed class PictureRegionDetectorTests
                     }
                     else
                     {
-                        Set(xx, yy, 250, 250, 250);
+                        Set(xx, yy, paperR, paperG, paperB);
                     }
                 }
             }
