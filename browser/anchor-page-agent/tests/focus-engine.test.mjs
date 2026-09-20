@@ -8,6 +8,7 @@ const {
   isProtectedPage,
   shouldExcludeElement,
   applyImageFiltering,
+  isOffTaskImage,
   clearImageFilters,
   maskFutureText,
   clearInterventions,
@@ -98,11 +99,32 @@ test("dynamic filtering blurs only images over threshold and preserves original 
   const small = new FakeElement("img", { width: 90, height: 60, filter: "sepia(1)" });
   const hero = new FakeElement("img", { width: 900, height: 620, rect: { top: 20, bottom: 640, width: 900, height: 620 } });
   const root = new FakeRoot([small, hero]);
-  const changed = applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.55, relevance: () => 0.05 });
+  const changed = applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.55, relevance: () => 0.05, offTask: () => true });
   assert.equal(changed, 1);
   assert.equal(small.style.filter, "sepia(1)");
   assert.match(hero.style.filter, /blur/);
   assert.equal(hero.dataset.anchorFiltered, "true");
+});
+
+test("article pictures stay sharp; only promo wording or ad containers are degraded", () => {
+  const rect = { top: 20, bottom: 640, width: 900, height: 620 };
+  const article = new FakeElement("img", { width: 900, height: 620, rect });
+  article.alt = "A tabby cat on a wall";
+  const latin = new FakeElement("img", { width: 900, height: 620, rect });
+  latin.alt = "Felis catus in the wild";
+  const promo = new FakeElement("img", { width: 900, height: 620, rect });
+  promo.alt = "Sponsored: cat food deal";
+
+  assert.equal(isOffTaskImage(article), false);
+  assert.equal(isOffTaskImage(latin), false);
+  assert.equal(isOffTaskImage(promo), true);
+
+  const root = new FakeRoot([article, latin, promo]);
+  const changed = applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.5 });
+  assert.equal(changed, 1);
+  assert.equal(article.style.filter, "");
+  assert.equal(latin.style.filter, "");
+  assert.match(promo.style.filter, /blur/);
 });
 
 test("future text mask excludes current and past paragraphs", () => {
@@ -119,7 +141,7 @@ test("cleanup restores filters and is idempotent", () => {
   const image = new FakeElement("img", { width: 900, height: 620, filter: "sepia(1)", rect: { top: 0, bottom: 620, width: 900, height: 620 } });
   const paragraph = new FakeElement("p");
   const root = new FakeRoot([image], [paragraph]);
-  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0 });
+  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0, offTask: () => true });
   maskFutureText(root, -1, { lookahead: 0 });
   clearInterventions(root);
   paragraph.classList.add("anchor-recovery-anchor");
@@ -148,7 +170,7 @@ test("CSS background images can be filtered and animation suppression is reversi
   animated.dataset.anchorAnimated = "true";
   const root = new FakeRoot([], [], [background], [animated]);
 
-  assert.equal(applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.5, relevance: () => 0 }), 1);
+  assert.equal(applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.5, relevance: () => 0, offTask: () => true }), 1);
   assert.equal(applyAnimationSuppression(root, true), 1);
   assert.match(background.style.filter, /blur/);
   assert.equal(animated.style.animationPlayState, "paused");
@@ -160,7 +182,7 @@ test("clearing future text masks preserves unrelated image blur", () => {
   const image = new FakeElement("img", { width: 900, height: 620, rect: { top: 0, bottom: 620, width: 900, height: 620 } });
   const paragraph = new FakeElement("p");
   const root = new FakeRoot([image], [paragraph]);
-  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0 });
+  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0, offTask: () => true });
   maskFutureText(root, -1, { lookahead: 0 });
 
   clearFutureTextMasks(root);
@@ -174,7 +196,7 @@ test("clearing image filters preserves future text masks", () => {
   const image = new FakeElement("img", { width: 900, height: 620, filter: "sepia(1)", rect: { top: 0, bottom: 620, width: 900, height: 620 } });
   const paragraph = new FakeElement("p");
   const root = new FakeRoot([image], [paragraph]);
-  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0 });
+  applyImageFiltering(root, { viewportWidth: 1200, viewportHeight: 800, threshold: 0.2, relevance: () => 0, offTask: () => true });
   maskFutureText(root, -1, { lookahead: 0 });
 
   clearImageFilters(root);

@@ -232,6 +232,15 @@ public sealed class DesktopImageBlurService : IDisposable
         }
 
         var treatments = PlanTreatments(capture, regions, processName, bounds.Size);
+        if (dimmed.Count == 0 && treatments.All(static t => t == PictureTreatment.Keep))
+        {
+            // Everything on screen belongs to the task: paint nothing at all.
+            window.Hide();
+            _visibleRegions = 0;
+            Status = $"Watching {processName} · {regions.Count} picture{(regions.Count == 1 ? string.Empty : "s")} on topic, left sharp · {_gradingSource}";
+            return scan > SlowScanBackoff / 2 ? SlowScanBackoff : Interval;
+        }
+
         using var surface = Compose(capture, regions, treatments, dimmed);
         window.Present(surface, bounds.Location);
         _visibleRegions = regions.Count + dimmed.Count;
@@ -355,8 +364,8 @@ public sealed class DesktopImageBlurService : IDisposable
         }
         var scene = Volatile.Read(ref _scene);
         var fresh = scene is not null && DateTimeOffset.UtcNow - scene.At <= SceneLifetime;
-        // No session running (toolkit preview): nothing is known about the task, so use the
-        // middle treatment except for ad-shaped pictures.
+        // No session running (toolkit preview): nothing is known about the task, so every picture
+        // is pixelated to show what the tool does.
         var sameWindow = fresh && string.Equals(scene!.ProcessName, processName, StringComparison.OrdinalIgnoreCase);
         var screenMatches = sameWindow && scene!.Screen is { } shot
             && string.Equals(shot.ProcessName, processName, StringComparison.OrdinalIgnoreCase);
@@ -391,7 +400,9 @@ public sealed class DesktopImageBlurService : IDisposable
                         missing.Add(descriptors[i] with { ThumbnailDataUrl = Thumbnail(capture, r) });
                     }
                 }
-                treatments[i] = PictureTreatmentPlanner.Plan(descriptors[i], context, verdict);
+                treatments[i] = fresh
+                    ? PictureTreatmentPlanner.Plan(descriptors[i], context, verdict)
+                    : descriptors[i].AdShaped ? PictureTreatment.Mosaic : PictureTreatment.Pixelate;
             }
         }
 
@@ -465,17 +476,17 @@ public sealed class DesktopImageBlurService : IDisposable
 
     private static string DescribeTreatments(IReadOnlyList<PictureTreatment> treatments, int dimmedPassages, string processName, string gradingSource)
     {
-        var softened = treatments.Count(static t => t == PictureTreatment.Soften);
+        var kept = treatments.Count(static t => t == PictureTreatment.Keep);
         var pixelated = treatments.Count(static t => t == PictureTreatment.Pixelate);
-        var mosaicked = treatments.Count - softened - pixelated;
+        var mosaicked = treatments.Count - kept - pixelated;
         var parts = new List<string>(4);
         if (dimmedPassages > 0)
         {
             parts.Add($"{dimmedPassages} off-task passage{(dimmedPassages == 1 ? string.Empty : "s")} dimmed");
         }
-        if (softened > 0)
+        if (kept > 0)
         {
-            parts.Add($"{softened} on-topic softened");
+            parts.Add($"{kept} on-topic left sharp");
         }
         if (pixelated > 0)
         {
@@ -671,6 +682,11 @@ public sealed class DesktopImageBlurService : IDisposable
             // stays recognisable at low resolution, but fine detail that pulls attention is gone.
             // The grid is finer for pictures that illustrate the task and coarser for ads/off-task pages.
             var cells = PictureTreatmentPlanner.CellsAcrossShortSide(treatments[i]);
+            if (cells <= 0)
+            {
+                // The picture illustrates the task: nothing is painted over it.
+                continue;
+            }
             var shrink = Math.Clamp(Math.Min(local.Width, local.Height) / cells, 3, 48);
             var smallSize = new Size(Math.Max(2, local.Width / shrink), Math.Max(2, local.Height / shrink));
             using var small = new Bitmap(smallSize.Width, smallSize.Height, PixelFormat.Format32bppArgb);

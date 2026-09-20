@@ -7,8 +7,8 @@ namespace Anchor.Core.Services;
 /// <summary>How much detail to strip from one picture.</summary>
 public enum PictureTreatment
 {
-    /// <summary>Picture illustrates the task: soften only, it stays readable.</summary>
-    Soften,
+    /// <summary>Picture illustrates the task, or nothing says it does not: leave the pixels alone.</summary>
+    Keep,
     /// <summary>Unrelated content picture: coarse pixels, shape and colour remain.</summary>
     Pixelate,
     /// <summary>Ad-like or off-task: heavy mosaic.</summary>
@@ -64,30 +64,29 @@ public static class PictureTreatmentPlanner
         }
         return verdict switch
         {
-            PictureRelevance.Illustrates => PictureTreatment.Soften,
+            PictureRelevance.Illustrates => PictureTreatment.Keep,
             PictureRelevance.Unrelated => PictureTreatment.Pixelate,
             PictureRelevance.Bait => PictureTreatment.Mosaic,
-            // Verdict still pending: on a relevant page keep pictures readable rather than
+            // Verdict still pending: on a relevant page leave pictures alone rather than
             // punishing the user while the grader catches up; only ad shapes are mosaicked.
-            _ => picture.AdShaped ? PictureTreatment.Mosaic : PictureTreatment.Soften
+            _ => picture.AdShaped ? PictureTreatment.Mosaic : PictureTreatment.Keep
         };
     }
 
-    /// <summary>Vocabulary heuristic used when DeepSeek is unavailable.</summary>
+    /// <summary>
+    /// Heuristic used when DeepSeek is unavailable. Only positive evidence degrades a picture:
+    /// an ad shape or promotional wording beside it. A caption that merely fails to repeat the
+    /// goal's words says nothing — the page is already known to be on task, so the picture stays.
+    /// </summary>
     public static PictureGrading LocalGrade(PictureGradingRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var taskTokens = TaskTokens(request.Goal, request.CurrentSubtask, request.WindowTitle);
         var verdicts = new Dictionary<string, PictureRelevance>(StringComparer.Ordinal);
         foreach (var picture in request.Pictures)
         {
-            verdicts[picture.Key] = picture.AdShaped
+            verdicts[picture.Key] = picture.AdShaped || Matches(picture.NearbyText, PromoWords)
                 ? PictureRelevance.Bait
-                : Matches(picture.NearbyText, taskTokens)
-                    ? PictureRelevance.Illustrates
-                    : picture.NearbyText.Length == 0
-                        ? PictureRelevance.Illustrates
-                        : PictureRelevance.Unrelated;
+                : PictureRelevance.Illustrates;
         }
         return new PictureGrading(verdicts, "Local rules", true);
     }
@@ -95,7 +94,7 @@ public static class PictureTreatmentPlanner
     /// <summary>Mosaic cells across the shorter side; fewer cells means less detail survives.</summary>
     public static int CellsAcrossShortSide(PictureTreatment treatment) => treatment switch
     {
-        PictureTreatment.Soften => 44,
+        PictureTreatment.Keep => 0,
         PictureTreatment.Pixelate => 18,
         _ => 9
     };
@@ -190,6 +189,13 @@ public static class PictureTreatmentPlanner
         var trimmed = value.Trim();
         return trimmed.Length <= maximum ? trimmed : trimmed[..maximum];
     }
+
+    /// <summary>Wording beside a picture that marks it as promotion rather than page content.</summary>
+    private static readonly HashSet<string> PromoWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "advert", "advertisement", "sponsored", "promoted", "promotion", "discount",
+        "subscribe", "trending", "recommended"
+    };
 
     private static readonly HashSet<string> CommonWords = new(StringComparer.OrdinalIgnoreCase)
     {

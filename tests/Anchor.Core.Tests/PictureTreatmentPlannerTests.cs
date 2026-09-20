@@ -40,15 +40,26 @@ public sealed class PictureTreatmentPlannerTests
     }
 
     [Fact]
-    public void Verdicts_map_to_treatments_and_pending_keeps_pictures_readable()
+    public void Verdicts_map_to_treatments_and_pending_leaves_pictures_untouched()
     {
         var context = new PictureSceneContext(true, CatTokens, [], 1280, 720);
         var picture = PictureTreatmentPlanner.Describe(new PixelRect(400, 200, 300, 200), context);
 
-        Assert.Equal(PictureTreatment.Soften, PictureTreatmentPlanner.Plan(picture, context, PictureRelevance.Illustrates));
+        Assert.Equal(PictureTreatment.Keep, PictureTreatmentPlanner.Plan(picture, context, PictureRelevance.Illustrates));
         Assert.Equal(PictureTreatment.Pixelate, PictureTreatmentPlanner.Plan(picture, context, PictureRelevance.Unrelated));
         Assert.Equal(PictureTreatment.Mosaic, PictureTreatmentPlanner.Plan(picture, context, PictureRelevance.Bait));
-        Assert.Equal(PictureTreatment.Soften, PictureTreatmentPlanner.Plan(picture, context, null));
+        Assert.Equal(PictureTreatment.Keep, PictureTreatmentPlanner.Plan(picture, context, null));
+    }
+
+    [Fact]
+    public void A_picture_graded_relevant_is_not_degraded_at_all()
+    {
+        var context = new PictureSceneContext(true, CatTokens, [], 1280, 720);
+        var picture = PictureTreatmentPlanner.Describe(new PixelRect(400, 200, 300, 200), context);
+
+        var treatment = PictureTreatmentPlanner.Plan(picture, context, PictureRelevance.Illustrates);
+
+        Assert.Equal(0, PictureTreatmentPlanner.CellsAcrossShortSide(treatment));
     }
 
     [Theory]
@@ -65,27 +76,29 @@ public sealed class PictureTreatmentPlannerTests
     }
 
     [Fact]
-    public void Local_grade_uses_task_vocabulary_and_ad_shape()
+    public void Local_grade_only_degrades_on_ad_shape_or_promo_wording()
     {
         var cat = new PictureDescriptor("cat", "A tabby cat resting on a wall", false, 300, 200);
-        var harbour = new PictureDescriptor("harbour", "Photograph of a harbour at dusk", false, 300, 200);
+        // A caption that does not repeat the goal's words is not evidence the picture is off-task.
+        var latin = new PictureDescriptor("latin", "Felis catus photographed at dusk", false, 300, 200);
         var banner = new PictureDescriptor("banner", "cat food sale", true, 728, 90);
+        var promo = new PictureDescriptor("promo", "Sponsored · subscribe today", false, 300, 200);
         var uncaptioned = new PictureDescriptor("plain", "", false, 300, 200);
 
-        var grading = PictureTreatmentPlanner.LocalGrade(Request(cat, harbour, banner, uncaptioned));
+        var grading = PictureTreatmentPlanner.LocalGrade(Request(cat, latin, banner, promo, uncaptioned));
 
         Assert.True(grading.IsFallback);
         Assert.Equal(PictureRelevance.Illustrates, grading.Verdicts["cat"]);
-        Assert.Equal(PictureRelevance.Unrelated, grading.Verdicts["harbour"]);
+        Assert.Equal(PictureRelevance.Illustrates, grading.Verdicts["latin"]);
         Assert.Equal(PictureRelevance.Bait, grading.Verdicts["banner"]);
+        Assert.Equal(PictureRelevance.Bait, grading.Verdicts["promo"]);
         Assert.Equal(PictureRelevance.Illustrates, grading.Verdicts["plain"]);
     }
 
     [Fact]
     public void Cell_counts_decrease_with_heavier_treatment()
     {
-        Assert.True(PictureTreatmentPlanner.CellsAcrossShortSide(PictureTreatment.Soften)
-            > PictureTreatmentPlanner.CellsAcrossShortSide(PictureTreatment.Pixelate));
+        Assert.Equal(0, PictureTreatmentPlanner.CellsAcrossShortSide(PictureTreatment.Keep));
         Assert.True(PictureTreatmentPlanner.CellsAcrossShortSide(PictureTreatment.Pixelate)
             > PictureTreatmentPlanner.CellsAcrossShortSide(PictureTreatment.Mosaic));
     }
