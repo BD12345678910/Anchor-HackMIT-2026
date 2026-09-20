@@ -59,6 +59,18 @@ public sealed class TaskSessionPlanner
         CancellationToken cancellationToken = default) =>
         _intelligence.BreakDownStepAsync(context, cancellationToken);
 
+    public Task<ProgressJudgment> JudgeProgressAsync(
+        ProgressEvidence evidence,
+        CancellationToken cancellationToken = default) =>
+        _intelligence.JudgeProgressAsync(evidence, cancellationToken);
+
+    public Task<ContextReminder> ComposeReminderAsync(
+        ContextCapsule capsule,
+        CancellationToken cancellationToken = default) =>
+        _intelligence.ComposeReminderAsync(capsule, cancellationToken);
+
+    public TaskIntelligenceAvailability Availability => _intelligence.Availability;
+
     public TaskSessionPlanState ConfirmSuggestedCompletion(DateTimeOffset completedAt)
     {
         EnsurePlanned();

@@ -15,7 +15,13 @@ public sealed record ContextCapsule(
     string CurrentSubtask = "",
     string RelevanceReason = "",
     DateTimeOffset? EvidenceTimestamp = null,
-    bool IsEstimatedContext = false);
+    bool IsEstimatedContext = false,
+    ActivityKind Activity = ActivityKind.Unknown,
+    string? FocusText = null,
+    FocusSource FocusSource = FocusSource.None,
+    string? ScreenExcerpt = null,
+    int KeyCount = 0,
+    int ScrollReversalCount = 0);
 
 public enum DistractionReason
 {
@@ -40,4 +46,10 @@ public sealed record ContextObservation(
     string CurrentSubtask = "",
     string RelevanceReason = "",
     DateTimeOffset? EvidenceTimestamp = null,
-    bool IsEstimatedContext = false);
+    bool IsEstimatedContext = false,
+    ActivityKind Activity = ActivityKind.Unknown,
+    string? FocusText = null,
+    FocusSource FocusSource = FocusSource.None,
+    string? ScreenExcerpt = null,
+    int KeyCount = 0,
+    int ScrollReversalCount = 0);

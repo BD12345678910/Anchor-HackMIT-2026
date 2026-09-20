@@ -6,8 +6,16 @@
     Title="Anchor overlay">
     <Grid Background="#F7182030" Padding="28" RequestedTheme="Dark">
         <StackPanel Spacing="14">
-            <TextBlock Text="Let's restore your place" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock x:Name="HeadlineText" Text="Let's restore your place" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock x:Name="ReasonText" Foreground="#9EABC8" TextWrapping="Wrap" />
+            <Border Padding="14" Background="#2A2E4A6B" CornerRadius="12" BorderBrush="#4D6FA0FF" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock x:Name="ActivityText" FontSize="12" Foreground="#AFC1FF" Text="WHERE YOU WERE" CharacterSpacing="60" />
+                    <TextBlock x:Name="WhereText" FontSize="16" TextWrapping="Wrap" Text="Recalling your place…" />
+                    <TextBlock x:Name="ResumeText" Foreground="#D2DAEE" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ReminderSourceText" FontSize="11" Foreground="#9EABC8" />
+                </StackPanel>
+            </Border>
             <Border Padding="14" Background="#241C2941" CornerRadius="12">
                 <StackPanel Spacing="8">
                     <TextBlock x:Name="TaskText" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />

@@ -10,8 +10,8 @@ namespace Anchor_Desktop.Interventions;
 /// <summary>
 /// Blurs pictures in whatever window is in front, with no browser extension: the window is
 /// captured with <c>PrintWindow</c>, photo-like areas are found by scoring the pixels
-/// (<see cref="PictureRegionDetector"/>), and softened copies of just those regions are painted
-/// on a click-through layered overlay. Text stays crisp. Works for browsers, PDF viewers, Office
+/// (<see cref="PictureRegionDetector"/>), and low-resolution (pixelated) copies of just those
+/// regions are painted on a click-through layered overlay. Text stays crisp. Works for browsers, PDF viewers, Office
 /// and any other window, because it never needs the app's cooperation.
 /// </summary>
 public sealed class DesktopImageBlurService : IDisposable
@@ -19,7 +19,9 @@ public sealed class DesktopImageBlurService : IDisposable
     private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan SlowScanBackoff = TimeSpan.FromMilliseconds(1500);
     private static readonly string[] ShellClasses = ["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"];
-    private static readonly Color Tint = Color.FromArgb(56, 18, 24, 40);
+
+    /// <summary>Target number of mosaic cells across the shorter side of a picture.</summary>
+    private const int CellsAcrossShortSide = 18;
 
     private readonly Func<bool> _shouldRun;
     private readonly Action<string, Exception> _logError;
@@ -222,16 +224,15 @@ public sealed class DesktopImageBlurService : IDisposable
     {
         var surface = new Bitmap(capture.Width, capture.Height, PixelFormat.Format32bppPArgb);
         using var target = Graphics.FromImage(surface);
-        target.InterpolationMode = InterpolationMode.HighQualityBilinear;
+        target.InterpolationMode = InterpolationMode.NearestNeighbor;
         target.PixelOffsetMode = PixelOffsetMode.Half;
         target.CompositingQuality = CompositingQuality.HighSpeed;
-        using var tint = new SolidBrush(Tint);
 
         foreach (var local in regions)
         {
-            // Shrinking to a handful of pixels and stretching back is a fast, strong low-pass
-            // filter: shapes and colours survive, details that pull attention do not.
-            var shrink = Math.Clamp(Math.Min(local.Width, local.Height) / 6, 6, 48);
+            // Downsample to a coarse grid and stretch back with nearest-neighbour: the picture
+            // stays recognisable at low resolution, but fine detail that pulls attention is gone.
+            var shrink = Math.Clamp(Math.Min(local.Width, local.Height) / CellsAcrossShortSide, 4, 40);
             var smallSize = new Size(Math.Max(2, local.Width / shrink), Math.Max(2, local.Height / shrink));
             using var small = new Bitmap(smallSize.Width, smallSize.Height, PixelFormat.Format32bppArgb);
             using (var shrinkGraphics = Graphics.FromImage(small))
@@ -241,7 +242,6 @@ public sealed class DesktopImageBlurService : IDisposable
                 shrinkGraphics.DrawImage(capture, new Rectangle(Point.Empty, smallSize), local, GraphicsUnit.Pixel);
             }
             target.DrawImage(small, local);
-            target.FillRectangle(tint, local);
         }
         return surface;
     }

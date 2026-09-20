@@ -14,6 +14,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 {
     private readonly NativeBridgeServer? _browserBridge;
     private readonly PointerConfinement _pointer = new();
+    private readonly Action<string, Exception> _logError;
     private GoalBeaconWindow? _beacon;
     private VisualFilterWindow? _filter;
     private RecoveryCardWindow? _recovery;
@@ -33,9 +34,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     public OverlayPresenter(NativeBridgeServer? browserBridge = null, Action<string, Exception>? logError = null)
     {
         _browserBridge = browserBridge;
+        _logError = logError ?? ((_, _) => { });
         ImageBlur = new DesktopImageBlurService(
             () => (_imageBlurPreview || (_toolkitState.ImageBlur && !_imageBlurSuspended)) && !_toolkitState.SecureWindow,
-            logError ?? ((_, _) => { }));
+            _logError);
     }
 
     /// <summary>Extension-free picture blur for the foreground window (pixel capture + layered overlay).</summary>
@@ -46,6 +48,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     public string ProgressLabel { get; set; } = "0 of 1";
     public bool ReducedMotion { get; set; }
     public Func<CancellationToken, Task<(string Step, string Source)>>? BreakdownProvider { get; set; }
+    /// <summary>Composes the activity-specific "where you were" reminder (DeepSeek when configured).</summary>
+    public Func<ContextCapsule, CancellationToken, Task<ContextReminder>>? ReminderProvider { get; set; }
     public event EventHandler? CurrentWindowMarkedRelevant;
     public bool EnableVisualFilter { get; set; } = true;
     public bool EnablePointerGuard { get; set; }
@@ -443,6 +447,16 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             capsule?.EvidenceTimestamp,
             capsule?.IsEstimatedContext ?? true,
             capsule?.RestoreTarget);
+        if (capsule is not null)
+        {
+            var local = LocalContextReminder.Compose(capsule);
+            _recovery.SetReminder(local, capsule.Activity);
+            _ = UpgradeReminderAsync(_recovery, capsule);
+        }
+        else
+        {
+            _recovery.SetReminderPending("No safe pre-distraction context was captured, so this card uses the task plan only.");
+        }
         _recovery.ReturnedToTask += (_, _) =>
         {
             App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.ReturnedToTask);
@@ -483,6 +497,27 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         };
         _recovery.Activate();
         OverlayWindowHelper.Center(_recovery, 860, 500);
+    }
+
+    private async Task UpgradeReminderAsync(RecoveryCardWindow card, ContextCapsule capsule)
+    {
+        if (ReminderProvider is null || capsule.IsEstimatedContext)
+        {
+            return;
+        }
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var reminder = await ReminderProvider(capsule, timeout.Token);
+            if (ReferenceEquals(_recovery, card))
+            {
+                card.SetReminder(reminder, capsule.Activity);
+            }
+        }
+        catch (Exception error)
+        {
+            _logError("reminder", error);
+        }
     }
 
     private void ShowGate(string reason)

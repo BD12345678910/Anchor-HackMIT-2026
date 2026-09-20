@@ -36,6 +36,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private string? _plannedGoal;
     private string? _lastEvidenceTitle;
     private bool _loadingPreferences;
+    private ScreenSnapshot? _lastScreen;
+    private DateTimeOffset _lastScreenRead = DateTimeOffset.MinValue;
+    private string? _lastJudgedScreenHash;
+    private bool _screenJudgeInFlight;
+    private readonly List<string> _screenEvidenceUsed = [];
+    private static readonly TimeSpan ScreenReadInterval = TimeSpan.FromSeconds(4);
     private readonly HashSet<string> _dismissedSuggestions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userRelevantTargets = new(StringComparer.OrdinalIgnoreCase);
 
@@ -49,6 +55,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _services.Overlays.OverlaysCleared += Overlays_Cleared;
         _services.Overlays.ImageBlur.StatusChanged += ImageBlur_StatusChanged;
         _services.Overlays.BreakdownProvider = BreakDownRecoveryStepAsync;
+        _services.Overlays.ReminderProvider = ComposeReminderAsync;
         ImageBlurStatus = _services.Overlays.ImageBlur.Status;
     }
 
@@ -87,6 +94,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool DeepSeekEnabled { get; set; }
     [ObservableProperty] public partial string DeepSeekApiKey { get; set; } = string.Empty;
     [ObservableProperty] public partial string DeepSeekStatus { get; set; } = "Not configured";
+    [ObservableProperty] public partial string ScreenReaderStatus { get; set; } = "Screen reading idle";
+    [ObservableProperty] public partial string ScreenProgressStatus { get; set; } = "Progress is detected from the screen while a session runs.";
+    [ObservableProperty] public partial string ScreenAnchor { get; set; } = "No anchor yet";
     [ObservableProperty] public partial bool ReducedMotion { get; set; }
     [ObservableProperty] public partial bool GazeSpotlightEnabled { get; set; }
     [ObservableProperty] public partial bool WindowFirewallEnabled { get; set; }
@@ -220,12 +230,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var settings = await _services.DeepSeekSettings.LoadAsync();
-            DeepSeekEnabled = settings?.Enabled == true;
-            DeepSeekStatus = settings?.Enabled == true
-                ? $"Configured · {settings.Model}"
-                : string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY"))
-                    ? "Not configured · local fallback remains available"
-                    : "Configured from DEEPSEEK_API_KEY";
+            var key = AppServices.ResolveDeepSeekKey(settings);
+            DeepSeekEnabled = key.Length > 0;
+            DeepSeekStatus = key.Length == 0
+                ? settings?.Enabled == false
+                    ? "Disabled · local rules only (screen progress will only suggest, never auto-complete)"
+                    : "Not configured · local fallback remains available"
+                : settings?.Enabled == true && !string.IsNullOrWhiteSpace(settings.ApiKey)
+                    ? $"Active by default · {settings.Model} · screen progress + context reminders"
+                    : "Active by default from DEEPSEEK_API_KEY · deepseek-flash";
+            ScreenReaderStatus = _services.ScreenReader.Status;
         }
         catch (Exception error)
         {
@@ -253,8 +267,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 DeepSeekClient.DefaultEndpoint.ToString()));
             DeepSeekApiKey = string.Empty;
             DeepSeekStatus = DeepSeekEnabled
-                ? "Configured · deepseek-flash · key encrypted for this Windows account"
+                ? "Active · deepseek-flash · key encrypted for this Windows account"
                 : "Disabled · local fallback only";
+            if (_taskPlanner is not null && !IsRunning)
+            {
+                _taskPlanner = null;
+                IsPlanReady = false;
+                PlanSource = "DeepSeek settings changed — plan again";
+            }
         }
         catch (Exception error)
         {
@@ -288,6 +308,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             var state = await _taskPlanner.PlanAsync(TaskTitle);
             _plannedGoal = TaskTitle.Trim();
             _lastEvidenceTitle = null;
+            _lastJudgedScreenHash = null;
+            _screenEvidenceUsed.Clear();
             _dismissedSuggestions.Clear();
             ApplyTaskPlanState(state);
             IsPlanReady = true;
@@ -498,6 +520,122 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         AddTimeline("Progress spotted", $"{windowTitle} · matched {string.Join(", ", match.MatchedTokens)}");
         ApplyTaskPlanState(state);
     }
+
+    /// <summary>
+    /// Reads the front window's text with on-device OCR every few seconds while the user is on
+    /// task-relevant content. The snapshot feeds both the context capsule (what line they were on)
+    /// and screen-based progress detection.
+    /// </summary>
+    private async Task ReadScreenAsync(GazeSample? gaze, SensorWindow raw, DateTimeOffset now)
+    {
+        if (!_services.ScreenReader.IsAvailable || now - _lastScreenRead < ScreenReadInterval)
+        {
+            return;
+        }
+        _lastScreenRead = now;
+        var snapshot = await _services.ScreenReader.ReadForegroundAsync(gaze, raw.IsSecureWindow);
+        ScreenReaderStatus = _services.ScreenReader.Status;
+        if (snapshot is null)
+        {
+            return;
+        }
+        _lastScreen = snapshot;
+        var anchorSource = snapshot.FocusSource switch
+        {
+            FocusSource.Gaze => "gaze",
+            FocusSource.Caret => "caret",
+            FocusSource.Pointer => "pointer",
+            FocusSource.Viewport => "viewport",
+            _ => "none"
+        };
+        ScreenAnchor = snapshot.FocusLine is null
+            ? $"{snapshot.ProcessName} · no text recognised"
+            : $"{anchorSource} · \u201c{Truncate(snapshot.FocusLine.Text, 90)}\u201d";
+        _services.Trace($"screen process={snapshot.ProcessName} lines={snapshot.Lines.Count} anchor={anchorSource} focus=\"{snapshot.FocusLine?.Text}\"");
+    }
+
+    /// <summary>
+    /// Asks the task intelligence (DeepSeek when configured, local rules otherwise) whether what is
+    /// on screen completes the active step. High-confidence DeepSeek verdicts complete the step
+    /// automatically; weaker evidence becomes a one-tap suggestion.
+    /// </summary>
+    private async Task JudgeScreenProgressAsync(SensorWindow raw)
+    {
+        if (_screenJudgeInFlight
+            || _taskPlanner?.Current?.Progress is not { CurrentStep: { } current } progress
+            || progress.PendingSuggestion is not null
+            || _lastScreen is not { } screen
+            || screen.Lines.Count == 0
+            || string.Equals(screen.ContentHash, _lastJudgedScreenHash, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _screenJudgeInFlight = true;
+        _lastJudgedScreenHash = screen.ContentHash;
+        try
+        {
+            var evidence = new ProgressEvidence(
+                TaskTitle,
+                progress.Plan.Steps,
+                progress.CompletedCount,
+                current,
+                screen.ProcessName,
+                screen.WindowTitle,
+                ScreenSnapshotAnalyzer.FlattenText(screen.Lines),
+                ActivityClassifier.Infer(screen.ProcessName, screen.WindowTitle, raw.KeyCount, raw.ScrollReversalCount, raw.MouseDistance),
+                _screenEvidenceUsed.TakeLast(6).ToArray());
+            var judgment = await _taskPlanner.JudgeProgressAsync(evidence);
+            _services.Trace($"progress source={judgment.Source} completed={judgment.StepCompleted} confidence={judgment.Confidence:0.00} evidence=\"{judgment.Evidence}\"");
+
+            if (_taskPlanner?.Current?.Progress.CurrentStep?.Id != current.Id)
+            {
+                return;
+            }
+
+            if (judgment.StepCompleted && !judgment.IsFallback && judgment.Confidence >= ProgressJudgment.AutoCompleteThreshold)
+            {
+                ScreenProgressStatus = $"{judgment.Source} saw the step finish ({judgment.Confidence:P0}): {judgment.Evidence}";
+                _screenEvidenceUsed.Add(judgment.Evidence);
+                AddTimeline("Progress detected on screen", $"{judgment.Source} · {judgment.Evidence}");
+                CompleteCurrentStep(CompletionSource.Adapter, judgment.Evidence);
+                return;
+            }
+
+            if (judgment.StepCompleted && judgment.Confidence >= ProgressJudgment.SuggestThreshold
+                && !_dismissedSuggestions.Contains(screen.WindowTitle))
+            {
+                var state = _taskPlanner.SuggestCompletion(judgment.Evidence);
+                PendingSuggestion = $"{judgment.Source}: {judgment.Evidence} Mark \"{current.Title}\" done?";
+                HasPendingSuggestion = true;
+                ScreenProgressStatus = $"{judgment.Source} thinks the step may be done ({judgment.Confidence:P0}).";
+                AddTimeline("Progress spotted on screen", $"{judgment.Source} · {judgment.Evidence}");
+                ApplyTaskPlanState(state);
+                return;
+            }
+
+            ScreenProgressStatus = judgment.Confidence > 0
+                ? $"{judgment.Source} · {judgment.Evidence}"
+                : $"{judgment.Source} · watching {screen.ProcessName} for \"{current.Title}\"";
+        }
+        catch (Exception error)
+        {
+            _services.LogError("screen progress", error);
+            ScreenProgressStatus = $"Screen progress check failed: {error.Message}";
+        }
+        finally
+        {
+            _screenJudgeInFlight = false;
+        }
+    }
+
+    private Task<ContextReminder> ComposeReminderAsync(ContextCapsule capsule, CancellationToken cancellationToken) =>
+        _taskPlanner is null
+            ? Task.FromResult(LocalContextReminder.Compose(capsule))
+            : _taskPlanner.ComposeReminderAsync(capsule, cancellationToken);
+
+    private static string Truncate(string value, int length) =>
+        value.Length <= length ? value : value[..(length - 1)].TrimEnd() + "…";
 
     [RelayCommand]
     private void PreviewBeacon()
@@ -909,6 +1047,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _services.Overlays.OverlaysCleared -= Overlays_Cleared;
         _services.Overlays.ImageBlur.StatusChanged -= ImageBlur_StatusChanged;
         _services.Overlays.BreakdownProvider = null;
+        _services.Overlays.ReminderProvider = null;
         if (IsGazeRunning)
         {
             await _services.Inference.StopGazeAsync();
@@ -965,6 +1104,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     || (relevance is null && raw.AppRelevance >= 0.65));
             if (contextIsSafe)
             {
+                await ReadScreenAsync(gaze, raw, now);
                 _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(
                     TaskTitle,
                     CurrentSubtask,
@@ -972,7 +1112,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                         ? "Marked relevant by the user"
                         : relevance?.Reason ?? "Matched the active task",
                     confidence: Math.Max(raw.AppRelevance, relevance?.Score ?? 0),
-                    evidenceTimestamp: now));
+                    evidenceTimestamp: now,
+                    screen: _lastScreen,
+                    keyCount: raw.KeyCount,
+                    scrollReversalCount: raw.ScrollReversalCount,
+                    mouseDistance: raw.MouseDistance));
+                _ = JudgeScreenProgressAsync(raw);
             }
             var progressObserved = raw.KeyCount > 0
                 || raw.MouseDistance >= 4
