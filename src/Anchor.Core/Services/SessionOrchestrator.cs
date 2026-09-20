@@ -196,7 +196,8 @@ public sealed class SessionOrchestrator
             return DistractionReason.ManualReport;
         }
 
-        if (reasonCodes.Contains("gibberish_typing", StringComparer.Ordinal))
+        if (reasonCodes.Contains("gibberish_typing", StringComparer.Ordinal)
+            || reasonCodes.Contains("random_typing", StringComparer.Ordinal))
         {
             return DistractionReason.GibberishTyping;
         }

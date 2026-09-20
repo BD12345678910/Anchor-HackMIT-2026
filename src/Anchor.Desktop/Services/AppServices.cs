@@ -20,6 +20,8 @@ public sealed class AppServices : IAsyncDisposable
         SafetyWatchdog watchdog,
         DeepSeekSettingsStore deepSeekSettings,
         NativeBridgeServer browserBridge,
+        ChromeDevToolsBridge pageBridge,
+        BrowserContextTracker browserContext,
         StudyRecordingService recording,
         HttpClient deepSeekHttpClient,
         string dataDirectory)
@@ -34,6 +36,8 @@ public sealed class AppServices : IAsyncDisposable
         Watchdog = watchdog;
         DeepSeekSettings = deepSeekSettings;
         BrowserBridge = browserBridge;
+        PageBridge = pageBridge;
+        BrowserContext = browserContext;
         Recording = recording;
         _deepSeekHttpClient = deepSeekHttpClient;
     }
@@ -46,6 +50,12 @@ public sealed class AppServices : IAsyncDisposable
     public SafetyWatchdog Watchdog { get; }
     public DeepSeekSettingsStore DeepSeekSettings { get; }
     public NativeBridgeServer BrowserBridge { get; }
+
+    /// <summary>Edits live pages in Chrome or Edge directly, with nothing for the user to install.</summary>
+    public ChromeDevToolsBridge PageBridge { get; }
+
+    /// <summary>Where the user is in the page in front of them, for context recovery.</summary>
+    public BrowserContextTracker BrowserContext { get; }
     public StudyRecordingService Recording { get; }
     public string DataDirectory { get; }
     public ToolPreferencesStore Preferences { get; }
@@ -108,6 +118,8 @@ public sealed class AppServices : IAsyncDisposable
         var browserBridge = new NativeBridgeServer(Path.Combine(appData, "bridge.json"));
         browserBridge.MessageReceived += (_, message) => browserContext.Apply(message);
         browserBridge.Start();
+        var pageBridge = new ChromeDevToolsBridge(
+            logError: (context, error) => App.Services?.LogError(context, error));
         var overlays = new OverlayPresenter(browserBridge, (context, error) => App.Services?.LogError(context, error));
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);
         var recording = new StudyRecordingService(inference, orchestrator);
@@ -124,6 +136,8 @@ public sealed class AppServices : IAsyncDisposable
             watchdog,
             deepSeekSettings,
             browserBridge,
+            pageBridge,
+            browserContext,
             recording,
             deepSeekHttpClient,
             appData);
@@ -166,6 +180,7 @@ public sealed class AppServices : IAsyncDisposable
         await Inference.DisposeAsync();
         await Store.DisposeAsync();
         await BrowserBridge.DisposeAsync();
+        PageBridge.Dispose();
         _deepSeekHttpClient.Dispose();
     }
 

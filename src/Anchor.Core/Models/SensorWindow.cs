@@ -21,7 +21,8 @@ public sealed record SensorWindow(
     ActivityKind Activity = ActivityKind.Unknown,
     bool GibberishTyping = false,
     int MouseClickCount = 0,
-    bool AimlessMouseSustained = false)
+    bool AimlessMouseSustained = false,
+    bool RandomTypingSustained = false)
 {
     public static SensorWindow Create(
         int keyCount,
@@ -44,7 +45,8 @@ public sealed record SensorWindow(
         ActivityKind activity = ActivityKind.Unknown,
         bool gibberishTyping = false,
         int mouseClickCount = 0,
-        bool aimlessMouseSustained = false)
+        bool aimlessMouseSustained = false,
+        bool randomTypingSustained = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keyCount);
         ArgumentOutOfRangeException.ThrowIfNegative(mouseDistance);
@@ -75,7 +77,8 @@ public sealed record SensorWindow(
             activity,
             gibberishTyping,
             mouseClickCount,
-            aimlessMouseSustained);
+            aimlessMouseSustained,
+            randomTypingSustained);
     }
 
     private static double ClampScore(double value) =>

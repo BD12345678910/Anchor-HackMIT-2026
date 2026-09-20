@@ -24,7 +24,10 @@ public sealed record AttentionEvidence(
     string? TypedText = null,
     double MouseNetDistance = 0,
     int MouseDirectionChanges = 0,
-    int MouseClickCount = 0)
+    int MouseClickCount = 0,
+    KeyStrokeCounts? KeyStrokes = null,
+    bool? ScreenTextChanged = null,
+    bool? HasTextCaret = null)
 {
     public static AttentionEvidence At(
         DateTimeOffset timestamp,
@@ -48,7 +51,10 @@ public sealed record AttentionEvidence(
         string? typedText = null,
         double mouseNetDistance = 0,
         int mouseDirectionChanges = 0,
-        int mouseClickCount = 0) =>
+        int mouseClickCount = 0,
+        KeyStrokeCounts? keyStrokes = null,
+        bool? screenTextChanged = null,
+        bool? hasTextCaret = null) =>
         new(
             timestamp,
             keyCount,
@@ -71,7 +77,10 @@ public sealed record AttentionEvidence(
             typedText,
             mouseNetDistance,
             mouseDirectionChanges,
-            mouseClickCount);
+            mouseClickCount,
+            keyStrokes,
+            screenTextChanged,
+            hasTextCaret);
 }
 
 public sealed record AttentionFusionResult(
@@ -88,9 +97,13 @@ public sealed class AttentionFusion
     /// <summary>Reaching for a menu wanders too; only a few seconds of it is drift.</summary>
     public static readonly TimeSpan MouseDriftDuration = TimeSpan.FromSeconds(3);
 
+    /// <summary>A mistyped shortcut is not drift; a few seconds of hitting keys is.</summary>
+    public static readonly TimeSpan RandomTypingDuration = TimeSpan.FromSeconds(3);
+
     private readonly AttentionStateMachine _stateMachine = AttentionStateMachine.CreateDefault();
     private readonly ScrollBehaviorAnalyzer _scroll = new();
     private readonly MouseBehaviorAnalyzer _mouse = new();
+    private readonly KeyboardBehaviorAnalyzer _keyboard = new();
     private DateTimeOffset? _gazeAwaySince;
     private DateTimeOffset? _noProgressSince;
 
@@ -108,6 +121,12 @@ public sealed class AttentionFusion
 
     /// <summary>Whether the cursor has been drifting or click-mashing long enough to count.</summary>
     public bool LastAimlessMouseSustained { get; private set; }
+
+    /// <summary>How the last few seconds at the keyboard looked, for the recovery card.</summary>
+    public KeyboardBehavior? LastKeyboardBehavior { get; private set; }
+
+    /// <summary>Whether keys have been landing nowhere long enough to count.</summary>
+    public bool LastRandomTypingSustained { get; private set; }
 
     public AttentionFusionResult Apply(AttentionEvidence evidence)
     {
@@ -165,6 +184,17 @@ public sealed class AttentionFusion
             && evidence.Timestamp - mouseStart >= MouseDriftDuration;
         LastAimlessMouseSustained = aimlessMouseSustained;
 
+        var keyboard = _keyboard.Observe(
+            evidence.Timestamp,
+            evidence.KeyStrokes ?? KeyStrokeCounts.Empty,
+            evidence.ScreenTextChanged,
+            evidence.HasTextCaret);
+        LastKeyboardBehavior = keyboard;
+        var randomTypingSustained = keyboard.IsRandom
+            && keyboard.StartedAt is { } keyboardStart
+            && evidence.Timestamp - keyboardStart >= RandomTypingDuration;
+        LastRandomTypingSustained = randomTypingSustained;
+
         LastTypingQuality = evidence.TypedText is null
             ? null
             : TypingQualityAnalyzer.Assess(evidence.TypedText);
@@ -192,7 +222,8 @@ public sealed class AttentionFusion
             activity: evidence.Activity,
             gibberishTyping: LastTypingQuality?.IsGibberish == true,
             mouseClickCount: evidence.MouseClickCount,
-            aimlessMouseSustained: aimlessMouseSustained);
+            aimlessMouseSustained: aimlessMouseSustained,
+            randomTypingSustained: randomTypingSustained);
         var prediction = _stateMachine.Update(window);
         return new AttentionFusionResult(
             window,

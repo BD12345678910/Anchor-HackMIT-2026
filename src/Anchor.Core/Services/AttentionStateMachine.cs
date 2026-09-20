@@ -185,6 +185,14 @@ public sealed class AttentionStateMachine
             reasons.Add("no_progress_sustained");
         }
 
+        // Characters going nowhere: typed into a page that accepts none, or a run of keys that do
+        // nothing. The shape of the keystrokes says this even where no text can be read back.
+        if (window.RandomTypingSustained)
+        {
+            evidence += 0.2;
+            reasons.Add("random_typing");
+        }
+
         // Text arriving with no words in it is the opposite of thinking: keyboard mashing, a held
         // key, or typing into the wrong place entirely.
         if (window.GibberishTyping)
@@ -192,7 +200,7 @@ public sealed class AttentionStateMachine
             evidence += 0.3;
             reasons.Add("gibberish_typing");
         }
-        else if (window.KeyCount > 0 && window.AppRelevance >= 0.5)
+        else if (!window.RandomTypingSustained && window.KeyCount > 0 && window.AppRelevance >= 0.5)
         {
             evidence -= Math.Clamp(window.KeyCount / 10d, 0, 1) * 0.08;
         }

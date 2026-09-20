@@ -34,6 +34,12 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
     /// <summary>Button presses in that window, for the click-mashing detector.</summary>
     public int LastMouseClickCount { get; private set; }
 
+    /// <summary>Keys in that window split by what they do, for the random-typing detector.</summary>
+    public KeyStrokeCounts LastKeyStrokes { get; private set; } = KeyStrokeCounts.Empty;
+
+    /// <summary>Whether the front window offers a caret to type into; null when unknown.</summary>
+    public bool? LastHasTextCaret { get; private set; }
+
     public WindowsSensorCoordinator(BrowserContextTracker? browserContext = null)
     {
         _browserContext = browserContext;
@@ -102,6 +108,15 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         LastMouseNetDistance = ParseDouble(inputEvent, "mouse_net_distance");
         LastMouseDirectionChanges = ParseInt(inputEvent, "mouse_direction_changes");
         LastMouseClickCount = ParseInt(inputEvent, "mouse_click_count");
+        LastKeyStrokes = new KeyStrokeCounts(
+            Letters: ParseInt(inputEvent, "key_letter_count"),
+            Digits: ParseInt(inputEvent, "key_digit_count"),
+            Navigation: LastNavigationKeyCount,
+            Editing: ParseInt(inputEvent, "key_editing_count"),
+            Modifiers: ParseInt(inputEvent, "key_modifier_count"),
+            Function: ParseInt(inputEvent, "key_function_count"),
+            Other: ParseInt(inputEvent, "key_other_count"));
+        LastHasTextCaret = TextCaretSensor.HasTextCaret();
 
         return SensorWindow.Create(
             keyCount: ParseInt(inputEvent, "key_count"),
