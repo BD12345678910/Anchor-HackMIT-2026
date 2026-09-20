@@ -23,6 +23,9 @@ public sealed class DesktopImageBlurService : IDisposable
     /// <summary>Target number of mosaic cells across the shorter side of a picture.</summary>
     private const int CellsAcrossShortSide = 18;
 
+    /// <summary>Title bar, tab strip and toolbars live in this band; pictures found only there are UI, not content.</summary>
+    private const int ToolbarBandHeight = 96;
+
     private readonly Func<bool> _shouldRun;
     private readonly Action<string, Exception> _logError;
     private readonly int _ownProcessId = Environment.ProcessId;
@@ -156,6 +159,7 @@ public sealed class DesktopImageBlurService : IDisposable
         }
 
         var regions = FindRegions(capture);
+        ExcludeNonContent(regions, foreground, bounds, window.Handle);
         var scan = stopwatch.Elapsed;
         if (regions.Count == 0)
         {
@@ -218,6 +222,57 @@ public sealed class DesktopImageBlurService : IDisposable
             capture.UnlockBits(data);
         }
         return regions;
+    }
+
+    /// <summary>
+    /// Drops window chrome (toolbar band), anything hidden behind the taskbar, and anything under one
+    /// of Anchor's own overlays, so only document pictures are pixelated.
+    /// </summary>
+    private void ExcludeNonContent(List<Rectangle> regions, IntPtr foreground, Rectangle bounds, IntPtr blurWindow)
+    {
+        var visible = new Rectangle(Point.Empty, bounds.Size);
+        var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor != IntPtr.Zero && GetMonitorInfoW(monitor, ref info))
+        {
+            var work = Rectangle.FromLTRB(info.Work.Left, info.Work.Top, info.Work.Right, info.Work.Bottom);
+            work.Offset(-bounds.X, -bounds.Y);
+            visible.Intersect(work);
+        }
+
+        // Anchor windows stacked above the foreground window (beacon, recovery card, gate): whatever they
+        // cover is not page content. Full-window overlays such as the dim are ignored so they never veto everything.
+        var own = new List<Rectangle>();
+        for (var above = GetWindow(foreground, GwHwndPrev); above != IntPtr.Zero; above = GetWindow(above, GwHwndPrev))
+        {
+            if (above == blurWindow || !IsWindowVisible(above))
+            {
+                continue;
+            }
+            GetWindowThreadProcessId(above, out var pid);
+            if (pid != _ownProcessId || !GetWindowRect(above, out var r))
+            {
+                continue;
+            }
+            var rect = Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+            rect.Offset(-bounds.X, -bounds.Y);
+            if (rect.Width > 0 && rect.Height > 0 && !rect.Contains(visible))
+            {
+                own.Add(rect);
+            }
+        }
+
+        for (var i = regions.Count - 1; i >= 0; i--)
+        {
+            var region = Rectangle.Intersect(regions[i], visible);
+            if (region.Width < 24 || region.Height < 24 || region.Bottom <= ToolbarBandHeight
+                || own.Any(rect => rect.IntersectsWith(region)))
+            {
+                regions.RemoveAt(i);
+                continue;
+            }
+            regions[i] = region;
+        }
     }
 
     private static Bitmap Compose(Bitmap capture, IReadOnlyList<Rectangle> regions)
@@ -291,8 +346,35 @@ public sealed class DesktopImageBlurService : IDisposable
     private const uint PwRenderFullContent = 0x00000002;
     private const uint PmRemove = 0x0001;
 
+    private const uint MonitorDefaultToNearest = 2;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect { public int Left; public int Top; public int Right; public int Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    private const uint GwHwndPrev = 3;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr window);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeMessage

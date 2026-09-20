@@ -60,6 +60,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         || _firewall is not null
         || _pointer.IsConfined;
     public bool HasAnyOverlay => HasRestrictiveOverlay || _recovery is not null || _beacon is not null;
+    /// <summary>True when Esc has something to release, including the extension-free picture mosaic.</summary>
+    public bool HasReleasableIntervention => HasAnyOverlay || ImageBlur.IsBlurring;
 
     /// <summary>Raised after every overlay has been closed, so bound status text can stop claiming one is showing.</summary>
     public event EventHandler? OverlaysCleared;

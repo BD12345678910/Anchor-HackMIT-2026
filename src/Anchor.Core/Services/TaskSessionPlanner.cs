@@ -51,8 +51,20 @@ public sealed class TaskSessionPlanner
 
     public Task<RelevanceJudgment> JudgeRelevanceAsync(
         TaskContext context,
-        CancellationToken cancellationToken = default) =>
-        _intelligence.JudgeRelevanceAsync(context, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (TaskRelevanceScorer.IsSelfWindow(context.ProcessName))
+        {
+            return Task.FromResult(new RelevanceJudgment(
+                TaskRelevanceScorer.SelfWindowScore,
+                RelevanceClass.Relevant,
+                "Anchor's own window is never a detour",
+                false,
+                DateTimeOffset.MaxValue));
+        }
+        return _intelligence.JudgeRelevanceAsync(context, cancellationToken);
+    }
 
     public Task<TaskStep> BreakDownCurrentStepAsync(
         TaskContext context,

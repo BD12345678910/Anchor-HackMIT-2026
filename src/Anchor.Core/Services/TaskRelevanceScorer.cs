@@ -35,6 +35,9 @@ public static class TaskRelevanceScorer
         "matlab", "rstudio", "jupyter", "geogebra", "texstudio", "texworks", "overleaf", "wordpad",
     ];
 
+    public static bool IsSelfWindow(string? processName) =>
+        string.Equals((processName ?? string.Empty).Trim(), "Anchor", StringComparison.OrdinalIgnoreCase);
+
     public static double Score(string? taskTitle, string? processName, string? context)
     {
         var goalTokens = MeaningfulTokens(taskTitle);
@@ -44,7 +47,7 @@ public static class TaskRelevanceScorer
         }
 
         var process = (processName ?? string.Empty).Trim();
-        if (process.Equals("Anchor", StringComparison.OrdinalIgnoreCase))
+        if (IsSelfWindow(process))
         {
             return SelfWindowScore;
         }

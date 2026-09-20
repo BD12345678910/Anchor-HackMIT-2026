@@ -17,6 +17,15 @@ public sealed class PictureRegionDetectorTests
     }
 
     [Fact]
+    public void Dense_link_text_on_paper_is_not_a_picture()
+    {
+        var frame = new Frame();
+        frame.FillText(0, 0, Width, Height, 51, 102, 204, dense: true);
+
+        Assert.Empty(PictureRegionDetector.Detect(frame.Pixels, Width, Height, frame.Stride));
+    }
+
+    [Fact]
     public void Colour_photo_inside_text_is_found_where_it_is()
     {
         var frame = new Frame();
@@ -97,15 +106,25 @@ public sealed class PictureRegionDetectorTests
         }
 
         /// <summary>White paper with black glyph-like strokes every few pixels.</summary>
-        public void FillText(int x, int y, int w, int h)
+        public void FillText(int x, int y, int w, int h) => FillText(x, y, w, h, 20, 20, 20, dense: false);
+
+        public void FillText(int x, int y, int w, int h, byte r, byte g, byte b, bool dense)
         {
             for (var yy = y; yy < y + h; yy++)
             {
                 for (var xx = x; xx < x + w; xx++)
                 {
-                    var ink = yy % 14 is >= 3 and <= 10 && (xx % 7 is 1 or 2 || yy % 14 is 3 or 10);
-                    var v = ink ? (byte)20 : (byte)250;
-                    Set(xx, yy, v, v, v);
+                    var ink = dense
+                        ? yy % 12 is >= 2 and <= 9 && (xx % 4 is 0 or 1 || yy % 12 is 2 or 9)
+                        : yy % 14 is >= 3 and <= 10 && (xx % 7 is 1 or 2 || yy % 14 is 3 or 10);
+                    if (ink)
+                    {
+                        Set(xx, yy, r, g, b);
+                    }
+                    else
+                    {
+                        Set(xx, yy, 250, 250, 250);
+                    }
                 }
             }
         }

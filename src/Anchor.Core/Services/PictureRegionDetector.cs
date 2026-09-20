@@ -115,8 +115,10 @@ public static class PictureRegionDetector
             return paperShare >= 0.5 || meanLuma >= 232 ? BlockKind.Page : BlockKind.Smooth;
         }
 
-        // Colour photos / illustrations: a real share of saturated pixels plus some texture.
-        if (colourfulShare >= 0.35 && meanChroma >= 24)
+        // Colour photos / illustrations: a real share of saturated pixels plus some texture. Dense
+        // coloured text on paper (link lists, table cells) is colourful too, but keeps a large
+        // paper-white share that photographs do not.
+        if (colourfulShare >= 0.35 && meanChroma >= 24 && paperShare < 0.3)
         {
             return BlockKind.Picture;
         }
