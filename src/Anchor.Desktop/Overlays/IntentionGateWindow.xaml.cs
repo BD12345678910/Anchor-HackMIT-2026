@@ -9,16 +9,12 @@ public sealed partial class IntentionGateWindow : Window
         InitializeComponent();
         Activated += (_, args) =>
         {
-            IsActive = args.WindowActivationState != WindowActivationState.Deactivated;
-            if (!IsActive)
+            if (args.WindowActivationState == WindowActivationState.Deactivated)
             {
                 LostFocus?.Invoke(this, EventArgs.Empty);
             }
         };
     }
-
-    /// <summary>False until the gate actually receives activation, which Windows may refuse to a background app.</summary>
-    public bool IsActive { get; private set; }
 
     public event EventHandler? ReturnedToTask;
     public event EventHandler? ContinuedAnyway;

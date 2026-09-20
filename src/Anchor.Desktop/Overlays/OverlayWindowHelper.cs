@@ -74,6 +74,10 @@ internal static class OverlayWindowHelper
             height));
     }
 
+    /// <summary>True when the OS reports this window as the foreground window.</summary>
+    public static bool IsForeground(Window window) =>
+        GetForegroundWindow() == WinRT.Interop.WindowNative.GetWindowHandle(window);
+
     internal static RectInt32 GetActiveWorkArea(IntPtr fallbackWindow)
     {
         var foreground = GetForegroundWindow();

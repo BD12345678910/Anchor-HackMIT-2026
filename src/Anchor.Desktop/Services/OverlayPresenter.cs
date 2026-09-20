@@ -193,6 +193,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
             var offTask = prediction.ReasonCodes.Contains("low_task_relevance", StringComparer.Ordinal)
                 || prediction.ReasonCodes.Contains("off_task_window", StringComparer.Ordinal);
+            var gateInFront = _gate is not null && OverlayWindowHelper.IsForeground(_gate);
+            App.Services.Trace(
+                $"attention {prediction.State} {prediction.Confidence:0.00} [{string.Join(',', prediction.ReasonCodes)}] " +
+                $"offTask={offTask} ticks={_focusedTicks} gate={_gate is not null} gateFront={gateInFront} filter={_filter is not null} preview={_previewTimer is not null}");
             switch (prediction.State)
             {
                 case AttentionState.Drifting when offTask:
@@ -214,7 +218,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     // Off-task treatments end once the foreground is task-relevant again, even if the
                     // user is merely idle there. A gate the user is looking at stays; one left in the
                     // background is dismissed, since Windows may never have let it take focus.
-                    if (++_focusedTicks >= 2 && _previewTimer is null && (_gate is null || !_gate.IsActive))
+                    if (++_focusedTicks >= 2 && _previewTimer is null && !gateInFront)
                     {
                         Close(ref _gate);
                         Close(ref _firewall);
