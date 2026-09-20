@@ -9,6 +9,7 @@ public sealed class AttentionStateMachine
     private int _focusedWindows;
     private int _stuckWindows;
     private int _scrollThrashWindows;
+    private int _aimlessInputWindows;
 
     private AttentionStateMachine()
     {
@@ -65,6 +66,26 @@ public sealed class AttentionStateMachine
         }
 
         _scrollThrashWindows = 0;
+
+        // A wandering pointer, click mashing and keys that land nowhere happen with the right
+        // window still in front, so relevance-weighted evidence alone never crosses the threshold
+        // and the user sees nothing. They escalate on their own, the way a scroll burst does.
+        if ((window.AimlessMouseSustained || window.RandomTypingSustained || window.GibberishTyping)
+            && window.IdleSeconds < 5)
+        {
+            _aimlessInputWindows++;
+            _highDistractionWindows = 0;
+            _focusedWindows = 0;
+            _stuckWindows = 0;
+            State = _aimlessInputWindows >= 3 ? AttentionState.Distracted : AttentionState.Drifting;
+            return AttentionPrediction.Create(
+                State,
+                _aimlessInputWindows >= 3 ? 0.82 : 0.6,
+                Math.Max(temporal.FiveSecond, rawEvidence),
+                reasons);
+        }
+
+        _aimlessInputWindows = 0;
 
         if (window.AppRelevance >= 0.55
             && window.ScrollReversalCount >= 8
@@ -159,7 +180,7 @@ public sealed class AttentionStateMachine
         var excessMotion = Math.Clamp((window.MouseDistance - RestlessMousePixels) / RestlessMousePixels, 0, 1);
         if (window.AimlessMouseSustained)
         {
-            evidence += 0.2 + (excessMotion * 0.1);
+            evidence += 0.34 + (excessMotion * 0.12);
             reasons.Add("pointer_wandering");
         }
         else
@@ -169,7 +190,7 @@ public sealed class AttentionStateMachine
 
         if (window.MouseClickCount >= 12 && window.KeyCount < MouseBehaviorAnalyzer.TypingKeyCount)
         {
-            evidence += 0.1;
+            evidence += 0.18;
             reasons.Add("click_mashing");
         }
 
@@ -189,7 +210,7 @@ public sealed class AttentionStateMachine
         // nothing. The shape of the keystrokes says this even where no text can be read back.
         if (window.RandomTypingSustained)
         {
-            evidence += 0.2;
+            evidence += 0.36;
             reasons.Add("random_typing");
         }
 
@@ -197,7 +218,7 @@ public sealed class AttentionStateMachine
         // key, or typing into the wrong place entirely.
         if (window.GibberishTyping)
         {
-            evidence += 0.3;
+            evidence += 0.38;
             reasons.Add("gibberish_typing");
         }
         else if (!window.RandomTypingSustained && window.KeyCount > 0 && window.AppRelevance >= 0.5)
@@ -232,5 +253,6 @@ public sealed class AttentionStateMachine
         _focusedWindows = 0;
         _stuckWindows = 0;
         _scrollThrashWindows = 0;
+        _aimlessInputWindows = 0;
     }
 }

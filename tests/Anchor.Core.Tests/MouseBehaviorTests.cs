@@ -194,6 +194,27 @@ public sealed class MouseBehaviorTests
     }
 
     [Fact]
+    public void Wandering_on_a_relevant_page_leaves_focus_and_escalates_on_its_own()
+    {
+        var fusion = new AttentionFusion();
+
+        var results = Enumerable.Range(0, 8)
+            .Select(tick => fusion.Apply(AttentionEvidence.At(
+                Start.AddSeconds(tick),
+                adapterRelevance: 0.9,
+                mouseDistance: 700,
+                mouseNetDistance: 30,
+                mouseDirectionChanges: 8,
+                mouseClickCount: 1)))
+            .ToArray();
+
+        Assert.Equal(AttentionState.Focused, results[0].Prediction.State);
+        Assert.Contains(results, r => r.Prediction.State == AttentionState.Drifting);
+        Assert.Equal(AttentionState.Distracted, results[^1].Prediction.State);
+        Assert.Contains("pointer_wandering", results[^1].Prediction.ReasonCodes);
+    }
+
+    [Fact]
     public void Pointer_drift_anchors_the_recovery_card_to_the_last_calm_screen()
     {
         var manager = new ContextCapsuleManager(Guid.NewGuid(), "Finish the DP chapter");

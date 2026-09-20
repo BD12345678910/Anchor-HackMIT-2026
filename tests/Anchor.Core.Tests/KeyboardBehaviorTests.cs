@@ -166,6 +166,9 @@ public sealed class KeyboardBehaviorTests
         Assert.NotNull(result);
         Assert.True(result.Window.RandomTypingSustained);
         Assert.Contains("random_typing", result.Prediction.ReasonCodes);
+        // Keys landing nowhere are enough on their own: the window is still "relevant", so the
+        // relevance-weighted score never crosses the threshold and nothing would be shown.
+        Assert.Equal(AttentionState.Distracted, result.Prediction.State);
     }
 
     [Fact]
