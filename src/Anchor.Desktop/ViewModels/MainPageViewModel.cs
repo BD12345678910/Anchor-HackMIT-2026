@@ -95,7 +95,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private string? _lastJudgedScreenHash;
     private bool _screenJudgeInFlight;
     private readonly List<string> _screenEvidenceUsed = [];
+    private readonly List<string> _screenTrail = [];
+    private string? _trailStepId;
+    private string? _trailLastHash;
+    private DateTimeOffset _stepActiveSince = DateTimeOffset.MinValue;
+    private string? _lastRelevanceTrace;
     private static readonly TimeSpan ScreenReadInterval = TimeSpan.FromSeconds(4);
+    private const int MaxTrailEntries = 12;
     private readonly HashSet<string> _dismissedSuggestions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userRelevantTargets = new(StringComparer.OrdinalIgnoreCase);
     private readonly AttentionAnalyzer _analyzer = new();
@@ -613,6 +619,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             return;
         }
         _lastScreen = snapshot;
+        RecordTrail(snapshot, now);
         var anchorSource = snapshot.FocusSource switch
         {
             FocusSource.Gaze => "gaze (camera on)",
@@ -625,6 +632,33 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             ? $"{snapshot.ProcessName} · {anchorSource} · no text recognised"
             : $"{anchorSource} · \u201c{Truncate(snapshot.FocusLine.Text, 90)}\u201d";
         _services.Trace($"screen process={snapshot.ProcessName} lines={snapshot.Lines.Count} anchor={anchorSource} focus=\"{snapshot.FocusLine?.Text}\"");
+    }
+
+    private void RecordTrail(ScreenSnapshot snapshot, DateTimeOffset now)
+    {
+        var stepId = _taskPlanner?.Current?.Progress.CurrentStep?.Id;
+        if (!string.Equals(stepId, _trailStepId, StringComparison.Ordinal))
+        {
+            _trailStepId = stepId;
+            _trailLastHash = null;
+            _screenTrail.Clear();
+            _stepActiveSince = now;
+        }
+        if (string.Equals(snapshot.ContentHash, _trailLastHash, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _trailLastHash = snapshot.ContentHash;
+        var entry = ScreenSnapshotAnalyzer.TrailEntry(snapshot.Lines);
+        if (entry.Length == 0 || (_screenTrail.Count > 0 && string.Equals(_screenTrail[^1], entry, StringComparison.Ordinal)))
+        {
+            return;
+        }
+        _screenTrail.Add(entry);
+        if (_screenTrail.Count > MaxTrailEntries)
+        {
+            _screenTrail.RemoveAt(0);
+        }
     }
 
     /// <summary>
@@ -657,7 +691,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 screen.WindowTitle,
                 ScreenSnapshotAnalyzer.FlattenText(screen.Lines),
                 ActivityClassifier.Infer(screen.ProcessName, screen.WindowTitle, raw.KeyCount, raw.ScrollReversalCount, raw.MouseDistance),
-                _screenEvidenceUsed.TakeLast(6).ToArray());
+                _screenEvidenceUsed.TakeLast(6).ToArray(),
+                _screenTrail.ToArray(),
+                _stepActiveSince == DateTimeOffset.MinValue ? TimeSpan.Zero : DateTimeOffset.UtcNow - _stepActiveSince);
             var judgment = await _taskPlanner.JudgeProgressAsync(evidence);
             _services.Trace($"progress source={judgment.Source} completed={judgment.StepCompleted} confidence={judgment.Confidence:0.00} evidence=\"{judgment.Evidence}\"");
 
@@ -706,6 +742,19 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _taskPlanner is null
             ? Task.FromResult(LocalContextReminder.Compose(capsule))
             : _taskPlanner.ComposeReminderAsync(capsule, cancellationToken);
+
+    private void TraceRelevance(TaskContext context, RelevanceJudgment? relevance, double adapterRelevance)
+    {
+        var line = relevance is null
+            ? $"relevance process={context.ProcessName} title=\"{context.WindowTitle}\" judge=none adapter={adapterRelevance:0.00}"
+            : $"relevance process={context.ProcessName} title=\"{context.WindowTitle}\" judge={(relevance.IsFallback ? "local" : "DeepSeek")} class={relevance.Classification} score={relevance.Score:0.00} adapter={adapterRelevance:0.00} reason=\"{relevance.Reason}\"";
+        if (string.Equals(line, _lastRelevanceTrace, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _lastRelevanceTrace = line;
+        _services.Trace(line);
+    }
 
     private static string Truncate(string value, int length) =>
         value.Length <= length ? value : value[..(length - 1)].TrimEnd() + "…";
@@ -1174,9 +1223,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             var relevance = _taskPlanner is null
                 ? null
                 : await _taskPlanner.JudgeRelevanceAsync(context);
+            TraceRelevance(context, relevance, raw.AppRelevance);
             var contextIsSafe = !raw.IsSecureWindow
                 && (userMarkedRelevant
                     || relevance?.Classification == RelevanceClass.Relevant
+                    || (relevance?.Classification == RelevanceClass.Ambiguous && raw.AppRelevance >= 0.5)
                     || (relevance is null && raw.AppRelevance >= 0.65));
             if (contextIsSafe)
             {
