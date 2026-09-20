@@ -69,6 +69,20 @@ public sealed class TaskSessionPlannerTests
         Assert.Same(context, intelligence.LastContext);
     }
 
+    [Fact]
+    public async Task Anchor_own_window_is_relevant_without_asking_the_intelligence()
+    {
+        var intelligence = new FixedIntelligence(ThreeQuestionResult());
+        var planner = new TaskSessionPlanner(intelligence);
+        var context = new TaskContext("Do 3 USACO questions", "Solve problem 1", "Anchor", "Anchor", null, []);
+
+        var result = await planner.JudgeRelevanceAsync(context);
+
+        Assert.Equal(RelevanceClass.Relevant, result.Classification);
+        Assert.False(result.IsFallback);
+        Assert.Null(intelligence.LastContext);
+    }
+
     private static TaskPlanningResult ThreeQuestionResult() =>
         new(
             new TaskPlan("Do 3 USACO questions", [

@@ -83,6 +83,20 @@ public sealed class TaskPlanManagerTests
     }
 
     [Fact]
+    public void DismissSuggestion_clears_the_pending_suggestion_without_advancing()
+    {
+        var manager = StartedThreeQuestionManager();
+        manager.SuggestCompletion("Accepted result detected");
+
+        var dismissed = manager.DismissSuggestion();
+
+        Assert.Null(dismissed.PendingSuggestion);
+        Assert.Equal("q1", dismissed.CurrentStep!.Id);
+        Assert.Equal(0, dismissed.CompletedCount);
+        Assert.Throws<InvalidOperationException>(() => manager.ConfirmSuggestedCompletion(CompletedAt));
+    }
+
+    [Fact]
     public void SuggestCompletion_does_not_advance_until_confirmed()
     {
         var manager = StartedThreeQuestionManager();

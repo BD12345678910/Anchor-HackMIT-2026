@@ -17,6 +17,40 @@ public sealed class PictureRegionDetectorTests
     }
 
     [Fact]
+    public void Antialiased_links_on_a_tinted_navbox_are_not_a_picture()
+    {
+        var frame = new Frame { Antialiased = true };
+        frame.FillText(0, 0, Width, Height);
+        frame.FillSolid(16, 96, 288, 128, 204, 204, 255);
+        frame.FillText(48, 104, 224, 16, 10, 60, 160, dense: true, 204, 204, 255);
+        frame.FillText(48, 136, 224, 16, 20, 20, 20, dense: true, 204, 204, 255);
+        frame.FillText(48, 168, 224, 16, 10, 60, 160, dense: false, 204, 204, 255);
+        frame.FillText(48, 200, 224, 16, 10, 60, 160, dense: true, 204, 204, 255);
+
+        Assert.Empty(PictureRegionDetector.Detect(frame.Pixels, Width, Height, frame.Stride));
+    }
+
+    [Fact]
+    public void Text_on_a_tinted_navbox_is_not_a_picture()
+    {
+        var frame = new Frame();
+        frame.FillText(0, 0, Width, Height);
+        frame.FillText(16, 96, 288, 64, 20, 20, 20, dense: true, 204, 204, 255);
+        frame.FillText(16, 160, 288, 32, 10, 60, 160, dense: false, 204, 204, 255);
+
+        Assert.Empty(PictureRegionDetector.Detect(frame.Pixels, Width, Height, frame.Stride));
+    }
+
+    [Fact]
+    public void Dense_link_text_on_paper_is_not_a_picture()
+    {
+        var frame = new Frame();
+        frame.FillText(0, 0, Width, Height, 51, 102, 204, dense: true);
+
+        Assert.Empty(PictureRegionDetector.Detect(frame.Pixels, Width, Height, frame.Stride));
+    }
+
+    [Fact]
     public void Colour_photo_inside_text_is_found_where_it_is()
     {
         var frame = new Frame();
@@ -97,18 +131,41 @@ public sealed class PictureRegionDetectorTests
         }
 
         /// <summary>White paper with black glyph-like strokes every few pixels.</summary>
-        public void FillText(int x, int y, int w, int h)
+        public void FillText(int x, int y, int w, int h) => FillText(x, y, w, h, 20, 20, 20, dense: false);
+
+        public void FillText(int x, int y, int w, int h, byte r, byte g, byte b, bool dense) =>
+            FillText(x, y, w, h, r, g, b, dense, 250, 250, 250);
+
+        public void FillText(
+            int x, int y, int w, int h, byte r, byte g, byte b, bool dense, byte paperR, byte paperG, byte paperB)
         {
             for (var yy = y; yy < y + h; yy++)
             {
                 for (var xx = x; xx < x + w; xx++)
                 {
-                    var ink = yy % 14 is >= 3 and <= 10 && (xx % 7 is 1 or 2 || yy % 14 is 3 or 10);
-                    var v = ink ? (byte)20 : (byte)250;
-                    Set(xx, yy, v, v, v);
+                    var ink = dense
+                        ? yy % 12 is >= 2 and <= 9 && (xx % 4 is 0 or 1 || yy % 12 is 2 or 9)
+                        : yy % 14 is >= 3 and <= 10 && (xx % 7 is 1 or 2 || yy % 14 is 3 or 10);
+                    if (ink)
+                    {
+                        Set(xx, yy, r, g, b);
+                    }
+                    else if (Antialiased && (xx % 4 is 2 || yy % 12 is 1 or 10))
+                    {
+                        Set(xx, yy, Mix(r, paperR), Mix(g, paperG), Mix(b, paperB));
+                    }
+                    else
+                    {
+                        Set(xx, yy, paperR, paperG, paperB);
+                    }
                 }
             }
         }
+
+        /// <summary>Blend half-tone edge pixels around glyph strokes, like ClearType/greyscale AA.</summary>
+        public bool Antialiased { get; init; }
+
+        private static byte Mix(byte ink, byte paper) => (byte)((ink + paper) / 2);
 
         /// <summary>Smoothly varying tones, like a photograph.</summary>
         public void FillPhoto(int x, int y, int w, int h, bool greyscale)

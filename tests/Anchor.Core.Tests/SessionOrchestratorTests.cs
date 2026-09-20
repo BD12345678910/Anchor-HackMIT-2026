@@ -83,6 +83,26 @@ public sealed class SessionOrchestratorTests
     }
 
     [Fact]
+    public async Task Late_sensor_window_after_manual_report_does_not_break_progress_ordering()
+    {
+        var fixture = new Fixture();
+        await fixture.Orchestrator.StartAsync("Write tests");
+        var now = DateTimeOffset.UtcNow;
+
+        await fixture.Orchestrator.ReportDistractedAsync();
+        var prediction = await fixture.Orchestrator.ProcessAsync(SensorWindow.Create(
+            keyCount: 6,
+            mouseDistance: 20,
+            idleSeconds: 0,
+            appRelevance: 0.9,
+            timestamp: now.AddSeconds(-30)));
+
+        Assert.NotNull(prediction);
+        Assert.NotNull(fixture.Orchestrator.Progress);
+        Assert.True(fixture.Orchestrator.IsRunning);
+    }
+
+    [Fact]
     public async Task Repeated_dismissals_reduce_future_intervention_sensitivity()
     {
         var fixture = new Fixture();

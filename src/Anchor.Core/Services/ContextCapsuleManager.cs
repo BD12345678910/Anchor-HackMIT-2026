@@ -40,6 +40,8 @@ public sealed class ContextCapsuleManager
             RestoreTarget = BoundNullable(SensitiveTextRedactor.Redact(observation.RestoreTarget), 1_024),
             CurrentSubtask = Bound(SensitiveTextRedactor.Redact(observation.CurrentSubtask), 240),
             RelevanceReason = Bound(SensitiveTextRedactor.Redact(observation.RelevanceReason), 500),
+            FocusText = BoundNullable(SensitiveTextRedactor.Redact(observation.FocusText), 400),
+            ScreenExcerpt = BoundNullable(SensitiveTextRedactor.Redact(observation.ScreenExcerpt), 1_600),
             EvidenceTimestamp = observation.EvidenceTimestamp ?? DateTimeOffset.UtcNow,
             Confidence = Math.Clamp(observation.Confidence, 0, 1)
         };
@@ -99,7 +101,13 @@ public sealed class ContextCapsuleManager
             anchor.CurrentSubtask,
             anchor.RelevanceReason,
             anchor.EvidenceTimestamp,
-            anchor.IsEstimatedContext);
+            anchor.IsEstimatedContext,
+            anchor.Activity,
+            anchor.FocusText,
+            anchor.FocusSource,
+            anchor.ScreenExcerpt,
+            anchor.KeyCount,
+            anchor.ScrollReversalCount);
     }
 
     private static string Bound(string? value, int length) =>

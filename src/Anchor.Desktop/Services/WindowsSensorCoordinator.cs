@@ -106,7 +106,11 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         string? currentSubtask = null,
         string? relevanceReason = null,
         double confidence = 0.7,
-        DateTimeOffset? evidenceTimestamp = null)
+        DateTimeOffset? evidenceTimestamp = null,
+        ScreenSnapshot? screen = null,
+        int keyCount = 0,
+        int scrollReversalCount = 0,
+        double mouseDistance = 0)
     {
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
@@ -115,6 +119,24 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         var browser = IsBrowserProcess(process) ? _browserContext?.Snapshot() : null;
         var browserIsFresh = browser is not null
             && (evidenceTimestamp ?? DateTimeOffset.UtcNow) - browser.UpdatedAt <= TimeSpan.FromSeconds(30);
+        var screenIsFresh = screen is not null
+            && !secure
+            && (evidenceTimestamp ?? DateTimeOffset.UtcNow) - screen.Timestamp <= TimeSpan.FromSeconds(20)
+            && string.Equals(screen.ProcessName, process, StringComparison.OrdinalIgnoreCase);
+        var activity = ActivityClassifier.Infer(process, browser?.Title ?? title, keyCount, scrollReversalCount, mouseDistance);
+        var focusLine = screenIsFresh ? screen!.FocusLine?.Text : null;
+        var anchorVerb = screen?.FocusSource switch
+        {
+            FocusSource.Gaze => "eyes on",
+            FocusSource.Caret => "cursor at",
+            FocusSource.Pointer => "pointer near",
+            _ => "on screen"
+        };
+        var lastAction = focusLine is not null
+            ? $"{ActivityClassifier.Describe(activity)} · {anchorVerb}: \u201c{focusLine}\u201d"
+            : browserIsFresh && !string.IsNullOrWhiteSpace(browser!.StuckPhrase)
+                ? $"Paused near: {browser.StuckPhrase}"
+                : $"Working toward: {taskTitle}";
         return new ContextObservation(
             Application: string.IsNullOrWhiteSpace(process) ? "Desktop" : process,
             DocumentIdentity: secure
@@ -125,9 +147,7 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             Location: browserIsFresh
                 ? $"About {browser!.Progress:P0} through the page · paragraph {browser.ParagraphIndex + 1}"
                 : "Current foreground window",
-            LastAction: browserIsFresh && !string.IsNullOrWhiteSpace(browser!.StuckPhrase)
-                ? $"Paused near: {browser.StuckPhrase}"
-                : $"Working toward: {taskTitle}",
+            LastAction: lastAction,
             NextAction: "Resume from the current window and take one small step.",
             SelectedText: null,
             RestoreTarget: browserIsFresh ? browser!.Origin : null,
@@ -135,7 +155,13 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             IsSensitiveField: secure,
             CurrentSubtask: currentSubtask ?? string.Empty,
             RelevanceReason: relevanceReason ?? string.Empty,
-            EvidenceTimestamp: evidenceTimestamp ?? DateTimeOffset.UtcNow);
+            EvidenceTimestamp: evidenceTimestamp ?? DateTimeOffset.UtcNow,
+            Activity: activity,
+            FocusText: focusLine,
+            FocusSource: screenIsFresh ? screen!.FocusSource : FocusSource.None,
+            ScreenExcerpt: screenIsFresh ? screen!.Excerpt : null,
+            KeyCount: keyCount,
+            ScrollReversalCount: scrollReversalCount);
     }
 
     public TaskContext CreateTaskContext(

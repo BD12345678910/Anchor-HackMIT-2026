@@ -119,6 +119,71 @@ public sealed class DeepSeekClientTests
         Assert.Equal(0, handler.RequestCount);
     }
 
+    [Fact]
+    public async Task JudgeProgressAsync_uses_deepseek_verdict_and_sends_only_bounded_screen_text()
+    {
+        var handler = new CapturingHandler(_ => JsonResponse(
+            """{"stepCompleted":true,"confidence":0.93,"evidence":"The page shows 'Accepted' for Bronze Problem 1."}"""));
+        var client = CreateClient(handler);
+        var step = new TaskStep("s1", "Solve 2021 December Bronze problem 1", "Accepted submission");
+        var evidence = new ProgressEvidence(
+            "do 3 usaco problems", [step], 0, step, "chrome", "USACO Results",
+            new string('z', 20_000) + " Accepted", ActivityKind.ProblemSolving, []);
+
+        var judgment = await client.JudgeProgressAsync(evidence, CancellationToken.None);
+
+        Assert.True(judgment.StepCompleted);
+        Assert.False(judgment.IsFallback);
+        Assert.Equal("DeepSeek", judgment.Source);
+        Assert.Equal(0.93, judgment.Confidence, 2);
+        Assert.Contains("Accepted", judgment.Evidence);
+        Assert.True(handler.LastBody.Length < 8_000);
+        Assert.Contains("\"thinking\":{\"type\":\"disabled\"}", handler.LastBody);
+        Assert.DoesNotContain("screenshot", handler.LastBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JudgeProgressAsync_falls_back_to_local_rules_on_bad_json_or_missing_key()
+    {
+        var step = new TaskStep("s1", "Solve 2021 December Bronze problem 1", "Accepted submission");
+        var evidence = new ProgressEvidence(
+            "do 3 usaco problems", [step], 0, step, "chrome", "USACO",
+            "Problem 1 Bronze December 2021 — Accepted!", ActivityKind.ProblemSolving, []);
+
+        var badJson = await CreateClient(new CapturingHandler(_ => JsonResponse("nope"))).JudgeProgressAsync(evidence, CancellationToken.None);
+        var noKeyHandler = new CapturingHandler(_ => throw new InvalidOperationException("must not be called"));
+        var noKey = await new DeepSeekClient(new HttpClient(noKeyHandler), string.Empty).JudgeProgressAsync(evidence, CancellationToken.None);
+
+        Assert.True(badJson.IsFallback);
+        Assert.Equal("Local rules", badJson.Source);
+        Assert.Equal(LocalProgressJudge.Judge(evidence), noKey);
+        Assert.Equal(0, noKeyHandler.RequestCount);
+        Assert.True(noKey.Confidence < ProgressJudgment.AutoCompleteThreshold);
+    }
+
+    [Fact]
+    public async Task ComposeReminderAsync_returns_deepseek_wording_and_skips_estimated_context()
+    {
+        var handler = new CapturingHandler(_ => JsonResponse(
+            """{"headline":"You were mid-loop in solve.cpp","whereYouWere":"Your cursor was on the for-loop over cows.","resumeWith":"Finish the loop body, then compile."}"""));
+        var client = CreateClient(handler);
+        var capsule = new ContextCapsule(
+            Guid.NewGuid(), DateTimeOffset.UtcNow, "do 3 usaco problems", "Code", "solve.cpp", "line 14",
+            "Coding · cursor at: for (int i", "Compile and submit", null, null, DistractionReason.AppSwitch,
+            "Solve problem 1", "matched", DateTimeOffset.UtcNow, false,
+            ActivityKind.Coding, "for (int i = 0; i < n; i++) {", FocusSource.Caret, "int n; cin >> n;", 30, 0);
+
+        var reminder = await client.ComposeReminderAsync(capsule, CancellationToken.None);
+        var estimated = await client.ComposeReminderAsync(capsule with { IsEstimatedContext = true }, CancellationToken.None);
+
+        Assert.False(reminder.IsFallback);
+        Assert.Equal("DeepSeek", reminder.Source);
+        Assert.Equal("You were mid-loop in solve.cpp", reminder.Headline);
+        Assert.Contains("coding", handler.LastBody, StringComparison.OrdinalIgnoreCase);
+        Assert.True(estimated.IsFallback);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
     private static DeepSeekClient CreateClient(
         CapturingHandler handler,
         Func<DateTimeOffset>? clock = null) =>

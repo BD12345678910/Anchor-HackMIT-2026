@@ -1,3 +1,5 @@
+using Anchor.Core.Models;
+using Anchor.Core.Services;
 using Microsoft.UI.Xaml;
 
 namespace Anchor_Desktop.Overlays;
@@ -8,6 +10,7 @@ public sealed partial class RecoveryCardWindow : Window
     private string _lastAction = string.Empty;
     private string _nextAction = string.Empty;
     private Uri? _restoreTarget;
+    private ContextReminder? _reminder;
 
     public RecoveryCardWindow()
     {
@@ -62,9 +65,31 @@ public sealed partial class RecoveryCardWindow : Window
         LastActionText.Text = $"Saved place: {_lastAction}";
     }
 
+    /// <summary>Shows the activity-specific reminder (DeepSeek or local recall) built from the frozen capsule.</summary>
+    public void SetReminder(ContextReminder reminder, ActivityKind activity)
+    {
+        _reminder = reminder;
+        HeadlineText.Text = string.IsNullOrWhiteSpace(reminder.Headline) ? "Let's restore your place" : reminder.Headline;
+        ActivityText.Text = $"WHERE YOU WERE · {ActivityClassifier.Describe(activity).ToUpperInvariant()}";
+        WhereText.Text = reminder.WhereYouWere;
+        ResumeText.Text = string.IsNullOrWhiteSpace(reminder.ResumeWith) ? string.Empty : $"Resume with: {reminder.ResumeWith}";
+        ReminderSourceText.Text = reminder.IsFallback
+            ? $"{reminder.Source} · deterministic, on-device"
+            : $"{reminder.Source} · phrased from on-device OCR + task plan, nothing else was sent";
+    }
+
+    public void SetReminderPending(string message)
+    {
+        WhereText.Text = message;
+        ResumeText.Text = string.Empty;
+        ReminderSourceText.Text = string.Empty;
+    }
+
     private void Recap_Click(object sender, RoutedEventArgs e)
     {
-        ReasonText.Text = $"You were working on “{_task}”. {_lastAction} The intended continuation is: {_nextAction}";
+        ReasonText.Text = _reminder is null
+            ? $"You were working on “{_task}”. {_lastAction} The intended continuation is: {_nextAction}"
+            : $"{_reminder.WhereYouWere} {_reminder.ResumeWith}";
     }
 
     private void BreakDown_Click(object sender, RoutedEventArgs e)

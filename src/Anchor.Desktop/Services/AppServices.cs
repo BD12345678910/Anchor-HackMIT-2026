@@ -49,6 +49,7 @@ public sealed class AppServices : IAsyncDisposable
     public StudyRecordingService Recording { get; }
     public string DataDirectory { get; }
     public ToolPreferencesStore Preferences { get; }
+    public ScreenTextReader ScreenReader { get; } = new();
 
     /// <summary>Appends a line to attention.log; only active when ANCHOR_TRACE is set.</summary>
     public void Trace(string message)
@@ -132,9 +133,8 @@ public sealed class AppServices : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var settings = await DeepSeekSettings.LoadAsync(cancellationToken);
-        var environmentKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? string.Empty;
-        var key = settings?.Enabled == true ? settings.ApiKey : environmentKey;
-        var model = settings?.Model ?? "deepseek-flash";
+        var key = ResolveDeepSeekKey(settings);
+        var model = string.IsNullOrWhiteSpace(settings?.Model) ? "deepseek-flash" : settings!.Model;
         var endpoint = settings is null
             ? DeepSeekClient.DefaultEndpoint
             : new Uri(settings.Endpoint, UriKind.Absolute);
@@ -143,6 +143,25 @@ public sealed class AppServices : IAsyncDisposable
             key,
             model,
             endpoint));
+    }
+
+    /// <summary>
+    /// DeepSeek is the default intelligence path whenever a key is present: saved settings win,
+    /// otherwise the <c>DEEPSEEK_API_KEY</c> environment variable. Explicitly disabling in settings
+    /// turns it off even if the variable is set.
+    /// </summary>
+    public static string ResolveDeepSeekKey(DeepSeekSettings? settings)
+    {
+        var environmentKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? string.Empty;
+        if (settings is null)
+        {
+            return environmentKey.Trim();
+        }
+        if (!settings.Enabled)
+        {
+            return string.Empty;
+        }
+        return string.IsNullOrWhiteSpace(settings.ApiKey) ? environmentKey.Trim() : settings.ApiKey.Trim();
     }
 
     public async ValueTask DisposeAsync()

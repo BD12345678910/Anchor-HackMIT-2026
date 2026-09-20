@@ -90,7 +90,7 @@ public sealed partial class MainWindow : Window
         if (message == WmInput)
         {
             if (App.Services.Sensors.ProcessRawInput(lParam) == VkEscape
-                && App.Services.Overlays.HasAnyOverlay)
+                && App.Services.Overlays.HasReleasableIntervention)
             {
                 App.DispatcherQueue.TryEnqueue(() => App.Services.Watchdog.Signal(SafetyReleaseReason.Escape));
             }

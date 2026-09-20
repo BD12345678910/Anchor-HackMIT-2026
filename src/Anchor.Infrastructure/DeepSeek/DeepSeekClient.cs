@@ -199,6 +199,128 @@ public sealed class DeepSeekClient : ITaskIntelligence
         }
     }
 
+    public async Task<ProgressJudgment> JudgeProgressAsync(
+        ProgressEvidence evidence,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        var local = LocalProgressJudge.Judge(evidence);
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            return local;
+        }
+
+        var steps = string.Join('\n', evidence.Steps.Select((step, index) =>
+            $"{index + 1}. [{(index < evidence.CompletedCount ? "done" : "todo")}] {Bound(step.Title, 160)} — done when: {Bound(step.CompletionCriterion, 160)}"));
+        var prompt = $$"""
+            Return JSON with this exact shape:
+            {"stepCompleted":false,"confidence":0.0,"evidence":"one short sentence quoting what on screen proves it"}
+            You watch a student's screen to detect progress on a study plan. Decide ONLY whether the ACTIVE step's
+            completion criterion is visibly satisfied by the screen text below (an accepted verdict, a submitted answer,
+            a finished document, a reached page). Being on the right page is NOT completion. If unsure, stepCompleted=false
+            with a low confidence. Never invent text that is not on screen.
+            Goal: {{Bound(evidence.Goal, 240)}}
+            Plan:
+            {{steps}}
+            ACTIVE step: {{Bound(evidence.CurrentStep.Title, 200)}} — done when: {{Bound(evidence.CurrentStep.CompletionCriterion, 200)}}
+            Activity: {{ActivityClassifier.Describe(evidence.Activity)}}
+            Process: {{Bound(evidence.ProcessName, 120)}}
+            Window: {{Bound(evidence.WindowTitle, 240)}}
+            Already used as evidence for earlier steps (do not count again): {{string.Join(" | ", evidence.RecentlyCompletedEvidence.Select(item => Bound(item, 160)))}}
+            Screen text (OCR, top to bottom):
+            {{Bound(evidence.ScreenText, 3_000)}}
+            """;
+        var response = await CompleteAsync(prompt, cancellationToken);
+        if (response.ErrorCode is not null)
+        {
+            return local with { Evidence = $"{local.Evidence} ({response.ErrorCode})" };
+        }
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<ProgressDto>(response.Content!, JsonOptions)
+                ?? throw new JsonException("Missing progress object.");
+            return new ProgressJudgment(
+                dto.StepCompleted,
+                Math.Clamp(dto.Confidence, 0, 1),
+                Bound(dto.Evidence, 300),
+                false,
+                "DeepSeek");
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException)
+        {
+            return local;
+        }
+    }
+
+    public async Task<ContextReminder> ComposeReminderAsync(
+        ContextCapsule capsule,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(capsule);
+        var local = LocalContextReminder.Compose(capsule);
+        if (string.IsNullOrWhiteSpace(_apiKey) || capsule.IsEstimatedContext)
+        {
+            return local;
+        }
+
+        var focusSource = capsule.FocusSource switch
+        {
+            FocusSource.Gaze => "the line the camera saw their eyes on",
+            FocusSource.Caret => "the line at their text cursor",
+            FocusSource.Pointer => "the line under their mouse pointer",
+            FocusSource.Viewport => "the middle of the visible page (no gaze/caret available)",
+            _ => "unknown"
+        };
+        var prompt = $$"""
+            Return JSON with this exact shape:
+            {"headline":"<= 60 chars, 'You were ...'","whereYouWere":"1-2 sentences, concrete","resumeWith":"one imperative sentence"}
+            A student with ADHD got distracted. The facts below describe the task-relevant work they were doing
+            BEFORE the distraction (not the distraction itself); the reminder must bring them back to exactly that spot.
+            Adapt to the activity: for reading quote the last sentence they were on; for coding name the file and the
+            code they were editing; for writing quote their last sentence; for problem solving name the problem and
+            sub-step; for browsing say which page and what they were looking for; for a video or lecture name it and
+            the timestamp to resume from. Use only the facts below, quote screen text verbatim when you quote, never
+            invent content, never tell them to close the application or page they were working in. Warm, brief, no emojis.
+            Task: {{Bound(capsule.TaskTitle, 240)}}
+            Active step: {{Bound(capsule.CurrentSubtask, 240)}}
+            Activity: {{ActivityClassifier.Describe(capsule.Activity)}}
+            Application: {{Bound(capsule.Application, 120)}}
+            Window/document: {{Bound(capsule.DocumentIdentity, 240)}}
+            Location: {{Bound(capsule.Location, 240)}}
+            Keys typed in last window: {{capsule.KeyCount}}; scroll reversals: {{capsule.ScrollReversalCount}}
+            Focus line ({{focusSource}}): {{Bound(capsule.FocusText, 400)}}
+            Screen excerpt around the focus line (» marks it):
+            {{Bound(capsule.ScreenExcerpt, 1_600)}}
+            Planned next action: {{Bound(capsule.NextAction, 240)}}
+            """;
+        var response = await CompleteAsync(prompt, cancellationToken);
+        if (response.ErrorCode is not null)
+        {
+            return local;
+        }
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<ReminderDto>(response.Content!, JsonOptions)
+                ?? throw new JsonException("Missing reminder object.");
+            if (string.IsNullOrWhiteSpace(dto.WhereYouWere))
+            {
+                throw new JsonException("Empty reminder.");
+            }
+            return new ContextReminder(
+                string.IsNullOrWhiteSpace(dto.Headline) ? local.Headline : Bound(dto.Headline, 90),
+                Bound(dto.WhereYouWere, 400),
+                string.IsNullOrWhiteSpace(dto.ResumeWith) ? local.ResumeWith : Bound(dto.ResumeWith, 240),
+                "DeepSeek",
+                false);
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException)
+        {
+            return local;
+        }
+    }
+
     private async Task<CompletionResult> CompleteAsync(
         string prompt,
         CancellationToken cancellationToken)
@@ -216,6 +338,7 @@ public sealed class DeepSeekClient : ITaskIntelligence
                     new { role = "user", content = prompt }
                 },
                 response_format = new { type = "json_object" },
+                thinking = new { type = "disabled" },
                 stream = false,
                 temperature = 0.1
             });
@@ -351,4 +474,6 @@ public sealed class DeepSeekClient : ITaskIntelligence
     private sealed record PlanDto(string? Goal, IReadOnlyList<StepDto>? Steps);
     private sealed record StepDto(string? Id, string? Title, string? CompletionCriterion);
     private sealed record RelevanceDto(double Score, string? Classification, string? Reason);
+    private sealed record ProgressDto(bool StepCompleted, double Confidence, string? Evidence);
+    private sealed record ReminderDto(string? Headline, string? WhereYouWere, string? ResumeWith);
 }
