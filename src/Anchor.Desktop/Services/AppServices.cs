@@ -107,7 +107,7 @@ public sealed class AppServices : IAsyncDisposable
         var browserBridge = new NativeBridgeServer(Path.Combine(appData, "bridge.json"));
         browserBridge.MessageReceived += (_, message) => browserContext.Apply(message);
         browserBridge.Start();
-        var overlays = new OverlayPresenter(browserBridge);
+        var overlays = new OverlayPresenter(browserBridge, (context, error) => App.Services?.LogError(context, error));
         var orchestrator = new SessionOrchestrator(store, inference, sensors, overlays);
         var recording = new StudyRecordingService(inference, orchestrator);
         orchestrator.InterventionPresented += recording.RecordIntervention;
@@ -151,6 +151,7 @@ public sealed class AppServices : IAsyncDisposable
         await Recording.DisposeAsync();
         await Orchestrator.StopAsync();
         Sensors.Dispose();
+        Overlays.ImageBlur.Dispose();
         await Inference.DisposeAsync();
         await Store.DisposeAsync();
         await BrowserBridge.DisposeAsync();
