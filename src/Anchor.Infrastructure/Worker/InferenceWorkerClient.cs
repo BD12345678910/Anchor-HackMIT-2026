@@ -28,14 +28,16 @@ public sealed record InferenceWorkerOptions(
 {
     public static InferenceWorkerOptions CreateDefault(string repositoryRoot)
     {
-        var packaged = Path.Combine(AppContext.BaseDirectory, "Anchor.VisionWorker.exe");
+        // Single-file publish extracts to a temp folder, so siblings live next to the process, not BaseDirectory.
+        var installDirectory = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+        var packaged = Path.Combine(installDirectory, "Anchor.VisionWorker.exe");
         return File.Exists(packaged)
-            ? new(packaged, AppContext.BaseDirectory, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(3), 2, StandaloneExecutable: true)
+            ? new(packaged, installDirectory, TimeSpan.FromSeconds(45), TimeSpan.FromSeconds(3), 2, StandaloneExecutable: true)
             : new(
                 Path.Combine(repositoryRoot, ".venv", "Scripts", "python.exe"),
                 Path.Combine(repositoryRoot, "src", "Anchor.Worker"),
-                TimeSpan.FromSeconds(5),
-                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(3),
                 2);
     }
 }
@@ -43,6 +45,7 @@ public sealed record InferenceWorkerOptions(
 public sealed class InferenceWorkerClient : IAsyncDisposable
 {
     private const uint ProtocolVersion = 3;
+    private static readonly TimeSpan CameraProbeDeadline = TimeSpan.FromSeconds(25);
     private readonly InferenceWorkerOptions _options;
     private readonly AttentionStateMachine _fallback = AttentionStateMachine.CreateDefault();
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
@@ -172,15 +175,23 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
     {
         if (_client is null || _headers is null || Mode != WorkerMode.Available)
         {
-            return [];
+            throw new InvalidOperationException(LastError is null
+                ? "The vision worker is not running."
+                : $"The vision worker is not running: {LastError}");
         }
 
+        var probeDeadline = _options.RpcDeadline < CameraProbeDeadline ? CameraProbeDeadline : _options.RpcDeadline;
         var call = _client.ListCamerasAsync(
             new ListCamerasRequest(),
             _headers,
-            DateTime.UtcNow + _options.RpcDeadline,
+            DateTime.UtcNow + probeDeadline,
             cancellationToken);
         var reply = await call.ResponseAsync;
+        if (reply.Unavailable is { } unavailable)
+        {
+            throw new InvalidOperationException(unavailable.Reason);
+        }
+
         return reply.Devices
             .Select(static item => new CameraDevice(checked((int)item.Index), item.Name))
             .ToArray();

@@ -21,6 +21,7 @@ public sealed class NativeBridgeServer : IAsyncDisposable
     public string PipeName { get; }
     public string Token { get; }
     public event EventHandler<string>? MessageReceived;
+    public bool IsConnected { get; private set; }
 
     public void Start()
     {
@@ -71,16 +72,22 @@ public sealed class NativeBridgeServer : IAsyncDisposable
                 {
                     await NativeMessageFraming.WriteAsync(pipe, snapshot, cancellationToken);
                 }
+                IsConnected = true;
                 using var session = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 var receive = ReceiveAsync(pipe, session.Token);
                 var send = SendSnapshotsAsync(pipe, initial.Revision, session.Token);
                 await Task.WhenAny(receive, send);
                 await session.CancelAsync();
                 try { await Task.WhenAll(receive, send); } catch (OperationCanceledException) { }
+                IsConnected = false;
             }
             catch (Exception error) when (error is IOException or JsonException or InvalidDataException)
             {
                 // A broken adapter never affects the desktop host; the next client can reconnect.
+            }
+            finally
+            {
+                IsConnected = false;
             }
         }
     }

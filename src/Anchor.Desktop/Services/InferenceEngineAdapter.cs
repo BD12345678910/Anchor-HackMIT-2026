@@ -16,6 +16,8 @@ public sealed class InferenceEngineAdapter : IInferenceEngine, IAsyncDisposable
 
     public bool IsAvailable => _client.Mode == WorkerMode.Available;
 
+    public string? LastError => _client.LastError;
+
     public Task<bool> StartAsync(CancellationToken cancellationToken = default) =>
         _client.StartAsync(cancellationToken);
 

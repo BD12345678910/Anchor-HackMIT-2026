@@ -87,16 +87,27 @@ public sealed class AttentionStateMachine
         }
 
         var consistency = 1 - Math.Abs(temporal.OneSecond - temporal.FiveSecond);
-        var confidence = Math.Clamp((Math.Abs(rawEvidence - 0.5) * 1.6) + (consistency * 0.2), 0, 1);
-        return AttentionPrediction.Create(State, confidence, temporal.FiveSecond, reasons);
+        var confidence = State switch
+        {
+            AttentionState.Distracted => 0.55 + (0.25 * rawEvidence) + (0.05 * Math.Min(_highDistractionWindows, 4)),
+            AttentionState.Drifting => 0.4 + (0.4 * rawEvidence),
+            AttentionState.Recovering => 0.7,
+            _ => (Math.Abs(rawEvidence - 0.5) * 1.6) + (consistency * 0.2)
+        };
+        return AttentionPrediction.Create(State, Math.Clamp(confidence, 0, 1), temporal.FiveSecond, reasons);
     }
 
     private static double CalculateDistractionEvidence(SensorWindow window, List<string> reasons)
     {
-        var evidence = (1 - window.AppRelevance) * 0.42;
+        var evidence = (1 - window.AppRelevance) * 0.52;
         if (window.AppRelevance < 0.35)
         {
             reasons.Add("low_task_relevance");
+        }
+        if (window.AppRelevance < 0.2)
+        {
+            evidence += 0.24;
+            reasons.Add("off_task_window");
         }
 
         evidence += Math.Clamp(window.IdleSeconds / 15, 0, 1) * 0.16;

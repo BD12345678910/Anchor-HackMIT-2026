@@ -6,6 +6,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAnchorFocusEngine() {
   const MASK_CLASS = "anchor-future-mask";
   const FILTERED_ATTRIBUTE = "anchorFiltered";
+  const ICON_LIMIT_PX = 160;
+  const DEFAULT_THRESHOLD = 0.5;
 
   function clamp(value) {
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -14,15 +16,17 @@
   function classifyImage(input) {
     const viewportArea = Math.max(1, input.viewportWidth * input.viewportHeight);
     const area = Math.max(0, input.width * input.height);
-    const areaSignal = Math.sqrt(clamp(area / viewportArea));
+    const areaSignal = Math.min(1, Math.sqrt(clamp(area / viewportArea)) * 2.2);
+    const pixelSignal = clamp(Math.min(input.width, input.height) / ICON_LIMIT_PX);
     const verticalCenter = (input.top + input.height / 2) / Math.max(1, input.viewportHeight);
     const centerSignal = 1 - Math.min(1, Math.abs(verticalCenter - 0.5) * 2);
     return clamp(
-      areaSignal * 0.45
-      + (input.animated ? 0.2 : 0)
-      + clamp(input.contrast ?? 0.5) * 0.1
-      + (1 - clamp(input.relevance ?? 0.5)) * 0.15
-      + centerSignal * 0.1,
+      areaSignal * 0.4
+      + pixelSignal * 0.25
+      + (input.animated ? 0.15 : 0)
+      + clamp(input.contrast ?? 0.5) * 0.05
+      + (1 - clamp(input.relevance ?? 0.5)) * 0.1
+      + centerSignal * 0.05,
     );
   }
 
@@ -50,7 +54,7 @@
   function applyImageFiltering(root, options = {}) {
     const viewportWidth = options.viewportWidth ?? globalScope.innerWidth ?? 1;
     const viewportHeight = options.viewportHeight ?? globalScope.innerHeight ?? 1;
-    const threshold = clamp(options.threshold ?? 0.62);
+    const threshold = clamp(options.threshold ?? DEFAULT_THRESHOLD);
     const relevance = options.relevance ?? (() => 0.5);
     let changed = 0;
     const candidates = [...new Set([
@@ -215,7 +219,7 @@
     if (isProtectedPage(location.href, signals)) return;
     injectStyles();
     const tracker = createReadingTracker((event) => chrome.runtime.sendMessage({ source: "anchor-content", event }));
-    let settings = { imageBlur: true, threshold: 0.62, futureTextMask: false, lookahead: 1, suppressAnimations: false };
+    let settings = { imageBlur: true, threshold: DEFAULT_THRESHOLD, futureTextMask: false, lookahead: 1, suppressAnimations: false };
     let currentParagraph = 0;
     let lastProgressSentAt = 0;
 

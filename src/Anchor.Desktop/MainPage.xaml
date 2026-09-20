@@ -3,300 +3,434 @@
     x:Class="Anchor_Desktop.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer>
-        <Grid MaxWidth="1180" Padding="32,24,32,40" RowSpacing="22">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+    <Page.Resources>
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Padding" Value="22" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="Metric" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </Page.Resources>
 
-            <Grid ColumnSpacing="20">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel Spacing="5">
-                    <TextBlock Text="Anchor" FontSize="32" FontWeight="SemiBold" />
-                    <TextBlock Text="Settings · plan, sense, prevent, recover, and review without leaving your desktop."
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <Border Grid.Column="1" Padding="12,7" CornerRadius="16" Background="#227C9CFF">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Persistent status strip: always shows what Anchor is doing right now. -->
+        <Border Padding="24,14" Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Padding="12,7" CornerRadius="14" Background="#227C9CFF" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Ellipse Width="8" Height="8" Fill="#7C9CFF" VerticalAlignment="Center" />
-                        <TextBlock Text="{x:Bind ViewModel.CapabilityStatus, Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.AttentionState, Mode=OneWay}" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind ViewModel.Confidence, Mode=OneWay}" Foreground="#AFC1FF" />
                     </StackPanel>
                 </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{x:Bind ViewModel.CurrentSubtask, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                </StackPanel>
+                <ProgressRing Grid.Column="2" Width="20" Height="20" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                    <Button Content="I'm distracted" Command="{x:Bind ViewModel.ReportDistractedCommand}" ToolTipService.ToolTip="Ctrl+Shift+F12" />
+                    <Button Content="Release overlays (Esc)" Command="{x:Bind ViewModel.EmergencyReleaseCommand}" ToolTipService.ToolTip="Clears every overlay and pointer restriction immediately" />
+                </StackPanel>
             </Grid>
+        </Border>
 
-            <Border Grid.Row="1" Padding="22" CornerRadius="18"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <Grid RowSpacing="16">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <StackPanel Spacing="7">
-                        <TextBlock Text="What are you trying to do?" FontWeight="SemiBold" />
-                        <TextBox Text="{x:Bind ViewModel.TaskTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="A concrete task, not a vague category" FontSize="17" />
-                    </StackPanel>
-                    <Grid Grid.Row="1" ColumnSpacing="10">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <Button Content="Plan goal" Command="{x:Bind ViewModel.PlanGoalCommand}" Style="{StaticResource AccentButtonStyle}" />
-                        <Button Grid.Column="1" Content="Start focus session" Command="{x:Bind ViewModel.StartCommand}" IsEnabled="{x:Bind ViewModel.IsPlanReady, Mode=OneWay}" />
-                        <Button Grid.Column="2" Content="Stop" Command="{x:Bind ViewModel.StopCommand}" />
-                        <Button Grid.Column="4" Content="I'm distracted" Command="{x:Bind ViewModel.ReportDistractedCommand}" Style="{StaticResource AccentButtonStyle}" />
-                    </Grid>
-                    <Border Grid.Row="2" Padding="14" CornerRadius="12" Background="#241C2941">
-                        <StackPanel Spacing="10">
-                            <Grid>
-                                <StackPanel>
-                                    <TextBlock Text="Current plan" FontWeight="SemiBold" />
-                                    <TextBlock Text="{x:Bind ViewModel.PlanSource, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <NavigationView x:Name="Sections" Grid.Row="1" PaneDisplayMode="Top" IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False" SelectionChanged="Sections_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="FocusItem" Content="Focus" Tag="Focus" Icon="Target" />
+                <NavigationViewItem Content="Tools" Tag="Tools" Icon="View" />
+                <NavigationViewItem Content="Camera" Tag="Camera" Icon="Camera" />
+                <NavigationViewItem Content="Insights" Tag="Insights" Icon="Clock" />
+                <NavigationViewItem Content="Settings" Tag="Settings" Icon="Setting" />
+            </NavigationView.MenuItems>
+
+            <Grid>
+                <!-- FOCUS: goal, plan, progress, live estimate -->
+                <ScrollViewer x:Name="FocusSection">
+                    <Grid MaxWidth="1100" Padding="28,20,28,32" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="16">
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="14">
+                                    <TextBlock Text="What are you working on?" Style="{StaticResource CardTitle}" />
+                                    <TextBox Text="{x:Bind ViewModel.TaskTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="e.g. do 3 USACO problems, read chapter 4, write the intro paragraph" FontSize="17" />
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Button Content="Plan goal" Command="{x:Bind ViewModel.PlanGoalCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                        <Button Content="Start focus session" Command="{x:Bind ViewModel.StartCommand}" IsEnabled="{x:Bind ViewModel.IsPlanReady, Mode=OneWay}" />
+                                        <Button Content="Stop session" Command="{x:Bind ViewModel.StopCommand}" IsEnabled="{x:Bind ViewModel.IsRunning, Mode=OneWay}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{x:Bind ViewModel.CapabilityStatus, Mode=OneWay}" Style="{StaticResource Hint}" />
                                 </StackPanel>
-                                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="10">
-                                    <TextBlock Text="{x:Bind ViewModel.TaskProgressLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="#AFC1FF" />
-                                    <Button Content="Done with current step" Command="{x:Bind ViewModel.MarkCurrentStepCompleteCommand}" />
-                                </StackPanel>
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.CurrentSubtask, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <ListView ItemsSource="{x:Bind ViewModel.TaskSteps, Mode=OneWay}" MaxHeight="190">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Padding="0,5" ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Number}" Foreground="#AFC1FF" />
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding CompletionCriterion}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Plan" Style="{StaticResource CardTitle}" />
+                                            <TextBlock Text="{x:Bind ViewModel.PlanSource, Mode=OneWay}" Style="{StaticResource Hint}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Padding="12,6" CornerRadius="12" Background="#332E5CFF" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind ViewModel.TaskProgressLabel, Mode=OneWay}" Foreground="#AFC1FF" FontWeight="SemiBold" />
+                                        </Border>
+                                    </Grid>
+                                    <Border Padding="14" CornerRadius="12" Background="#241C2941">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock Text="Current step" Style="{StaticResource Hint}" />
+                                            <TextBlock Text="{x:Bind ViewModel.CurrentSubtask, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBox Text="{x:Bind ViewModel.ProgressNote, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         PlaceholderText="Log progress, e.g. 'solved 2021 Dec Bronze problem 1'" />
+                                                <Button Grid.Column="1" Content="Log progress" Command="{x:Bind ViewModel.LogProgressCommand}" />
+                                                <Button Grid.Column="2" Content="Step done" Command="{x:Bind ViewModel.MarkCurrentStepCompleteCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                            </Grid>
+                                            <TextBlock Text="A note that matches the current step completes it; otherwise it is kept as evidence."
+                                                       Style="{StaticResource Hint}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <InfoBar IsOpen="{x:Bind ViewModel.HasPendingSuggestion, Mode=OneWay}" IsClosable="False" Severity="Success"
+                                             Title="Progress spotted" Message="{x:Bind ViewModel.PendingSuggestion, Mode=OneWay}">
+                                        <InfoBar.Content>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                                                <Button Content="Yes, mark done" Command="{x:Bind ViewModel.ConfirmSuggestionCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                                <Button Content="Not yet" Command="{x:Bind ViewModel.DismissSuggestionCommand}" />
                                             </StackPanel>
-                                            <TextBlock Grid.Column="2" Text="{Binding Status}" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                        </StackPanel>
-                    </Border>
-                </Grid>
-            </Border>
-
-            <Grid Grid.Row="2" ColumnSpacing="20">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="1.55*" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
-                <StackPanel Spacing="16">
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="14">
-                            <Grid>
-                                <TextBlock Text="Live attention estimate" FontSize="19" FontWeight="SemiBold" />
-                                <ProgressRing HorizontalAlignment="Right" Width="22" Height="22" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-                            </Grid>
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="{x:Bind ViewModel.AttentionState, Mode=OneWay}" FontSize="28" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Confidence, Mode=OneWay}" FontSize="22" VerticalAlignment="Center" Foreground="#AFC1FF" />
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.ReasonSummary, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <InfoBar IsOpen="True" Severity="Informational" IsClosable="False" Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
-                            <Button Content="Emergency release (Esc)" HorizontalAlignment="Left" Command="{x:Bind ViewModel.EmergencyReleaseCommand}" />
-                        </StackPanel>
-                    </Border>
-
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Border Padding="18" CornerRadius="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel><TextBlock Text="Focused" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.FocusedDuration, Mode=OneWay}" FontSize="24" /></StackPanel>
-                        </Border>
-                        <Border Grid.Column="1" Padding="18" CornerRadius="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel><TextBlock Text="Interruptions" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.InterruptionCount, Mode=OneWay}" FontSize="24" /></StackPanel>
-                        </Border>
-                        <Border Grid.Column="2" Padding="18" CornerRadius="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel><TextBlock Text="Recovery time" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.RecoveryDuration, Mode=OneWay}" FontSize="24" /></StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="Attention timeline" FontSize="19" FontWeight="SemiBold" />
-                            <ListView ItemsSource="{x:Bind ViewModel.Timeline, Mode=OneWay}" MaxHeight="260">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Padding="0,7" ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="70" /><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Time}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold" />
-                                            <TextBlock Grid.Column="2" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="12">
-                            <Grid>
-                                <StackPanel>
-                                    <TextBlock Text="Study recording" FontSize="19" FontWeight="SemiBold" />
-                                    <TextBlock Text="Record screen + gaze locally for with/without Anchor comparison"
-                                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </InfoBar.Content>
+                                    </InfoBar>
+                                    <InfoBar IsOpen="{x:Bind ViewModel.IsPlanComplete, Mode=OneWay}" IsClosable="False" Severity="Success"
+                                             Title="Goal complete" Message="Every step is done. Plan a new goal or stop the session." />
+                                    <ListView ItemsSource="{x:Bind ViewModel.TaskSteps, Mode=OneWay}" MaxHeight="260" SelectionMode="None">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="0,6" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Number}" Foreground="#AFC1FF" />
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding CompletionCriterion}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Status}" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
                                 </StackPanel>
-                                <Border HorizontalAlignment="Right" Padding="10,6" CornerRadius="12" Background="#332E5CFF">
-                                    <TextBlock Text="{x:Bind ViewModel.RecordingElapsed, Mode=OneWay}" Foreground="#AFC1FF" />
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="16">
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Live attention estimate" Style="{StaticResource CardTitle}" />
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{x:Bind ViewModel.AttentionState, Mode=OneWay}" FontSize="28" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Confidence, Mode=OneWay}" FontSize="22" VerticalAlignment="Center" Foreground="#AFC1FF" />
+                                    </Grid>
+                                    <TextBlock Text="{x:Bind ViewModel.ReasonSummary, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="Evidence: foreground window, task relevance, typing and pointer rhythm, scrolling, idle time, gaze (when a camera runs), and your own reports."
+                                               Style="{StaticResource Hint}" />
+                                    <ToggleSwitch Header="Treat the current window as task-relevant"
+                                                  OffContent="Model judgment" OnContent="Marked relevant"
+                                                  IsOn="{x:Bind ViewModel.TreatCurrentWindowAsRelevant, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Border>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource CardStyle}" Padding="16">
+                                    <StackPanel><TextBlock Text="Focused" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.FocusedDuration, Mode=OneWay}" Style="{StaticResource Metric}" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource CardStyle}" Padding="16">
+                                    <StackPanel><TextBlock Text="Interruptions" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.InterruptionCount, Mode=OneWay}" Style="{StaticResource Metric}" /></StackPanel>
                                 </Border>
                             </Grid>
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <TextBox Header="Participant code" Text="{x:Bind ViewModel.ParticipantCode, Mode=TwoWay}" PlaceholderText="P01 (pseudonym only)" />
-                                <ComboBox Grid.Column="1" Header="Trial mode" SelectedIndex="{x:Bind ViewModel.RecordingModeIndex, Mode=TwoWay}">
-                                    <ComboBoxItem Content="Baseline · interventions off" />
-                                    <ComboBoxItem Content="Anchor enabled" />
-                                </ComboBox>
-                            </Grid>
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBox Header="Output folder" Text="{x:Bind ViewModel.RecordingOutputFolder, Mode=TwoWay}" />
-                                <Button Grid.Column="1" Content="Choose…" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.ChooseRecordingFolderCommand}" />
-                            </Grid>
-                            <ToggleSwitch Header="Include webcam thumbnail" IsOn="{x:Bind ViewModel.WebcamRecordingConsent, Mode=TwoWay}"
-                                          IsEnabled="False" OffContent="Unavailable in this release" />
-                            <TextBlock Text="Display 1 · 15 FPS · audio off · gaze point and task state are composited into the MP4"
-                                       FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Start recording" Command="{x:Bind ViewModel.StartRecordingCommand}" Style="{StaticResource AccentButtonStyle}" />
-                                <Button Content="Stop recording" Command="{x:Bind ViewModel.StopRecordingCommand}" />
-                                <Button Content="Open output folder" Command="{x:Bind ViewModel.OpenRecordingFolderCommand}" />
-                            </StackPanel>
-                            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
-                                     Message="{x:Bind ViewModel.RecordingStatus, Mode=OneWay}" />
-                            <TextBlock Text="{x:Bind ViewModel.LatestRecordingFiles, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                            <Button Content="Compare recordings" HorizontalAlignment="Left"
-                                    Command="{x:Bind ViewModel.CompareRecordingsCommand}" Style="{StaticResource AccentButtonStyle}" />
-                            <TextBlock Text="{x:Bind ViewModel.ComparisonReport, Mode=OneWay}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Spacing="16">
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="DeepSeek intelligence" FontSize="19" FontWeight="SemiBold" />
-                            <ToggleSwitch Header="Use DeepSeek for task plans and relevance" IsOn="{x:Bind ViewModel.DeepSeekEnabled, Mode=TwoWay}" />
-                            <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="Stored encrypted for this Windows account"
-                                         PasswordChanged="DeepSeekKeyBox_PasswordChanged" />
-                            <Button Content="Save DeepSeek settings" HorizontalAlignment="Left" Command="{x:Bind ViewModel.SaveDeepSeekSettingsCommand}" />
-                            <ToggleSwitch Header="Treat the current window as task-relevant"
-                                          OffContent="Use model judgment" OnContent="User override"
-                                          IsOn="{x:Bind ViewModel.TreatCurrentWindowAsRelevant, Mode=TwoWay}" />
-                            <TextBlock Text="{x:Bind ViewModel.DeepSeekStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="12">
-                            <Grid>
-                                <StackPanel>
-                                    <TextBlock Text="Test Gaze" FontSize="19" FontWeight="SemiBold" />
-                                    <TextBlock Text="Private local camera test, tuning, and nine-point calibration"
-                                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="What is active right now" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.ToolkitStatus, Mode=OneWay}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind ViewModel.BrowserStatus, Mode=OneWay}" Style="{StaticResource Hint}" />
+                                    <TextBlock Text="{x:Bind ViewModel.GazeStatusMessage, Mode=OneWay}" Style="{StaticResource Hint}" />
                                 </StackPanel>
-                                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Find cameras" Command="{x:Bind ViewModel.RefreshCamerasCommand}" />
-                                    <Button Content="Start" Command="{x:Bind ViewModel.StartGazeTestCommand}" Style="{StaticResource AccentButtonStyle}" />
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- TOOLS: browser + desktop interventions -->
+                <ScrollViewer x:Name="ToolsSection" Visibility="Collapsed">
+                    <Grid MaxWidth="1100" Padding="28,20,28,32" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="16">
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Web pages (browser extension)" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="These change the page itself — blurring distracting images, hiding text you have not reached, pausing animations. They only work inside a browser with the Anchor extension loaded."
+                                               Style="{StaticResource Hint}" />
+                                    <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ViewModel.BrowserStatus, Mode=OneWay}" />
+                                    <ToggleSwitch Header="Blur distracting images" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.BlurImagesEnabled, Mode=TwoWay}" />
+                                    <ToggleSwitch Header="Hide text ahead of where you are reading" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.HideFutureTextEnabled, Mode=TwoWay}" />
+                                    <ToggleSwitch Header="Pause animations and GIFs" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.SuppressAnimationsEnabled, Mode=TwoWay}" />
+                                    <TextBlock Text="Load browser\anchor-extension as an unpacked extension (chrome://extensions → Developer mode → Load unpacked). Password, payment, and non-http pages are never touched."
+                                               Style="{StaticResource Hint}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Safety" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="Esc releases every overlay and pointer restriction. Ctrl+Shift+A reopens this window. Ctrl+Shift+F12 reports a distraction. Password and secure windows suppress all interventions. Everything fails open."
+                                               TextWrapping="Wrap" />
+                                    <Button Content="Release overlays now (Esc)" Command="{x:Bind ViewModel.EmergencyReleaseCommand}" />
+                                    <ToggleSwitch Header="Reduced motion" OffContent="Animations on" OnContent="Animations minimized" IsOn="{x:Bind ViewModel.ReducedMotion, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Desktop, PDFs, and other apps" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="Outside the browser Anchor cannot edit the document, so it works on the screen instead: dimming, shading off-task windows, a gaze spotlight, and check-in cards. Armed tools wait for a focus session and confirmed distraction; use Preview to see each one for 8 seconds."
+                                           Style="{StaticResource Hint}" />
+                                <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ViewModel.ToolkitStatus, Mode=OneWay}" />
+                                <Grid ColumnSpacing="8" RowSpacing="4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <ToggleSwitch Header="Dim the desktop when distracted" OffContent="Off" OnContent="Armed" IsOn="{x:Bind ViewModel.VisualFilterEnabled, Mode=TwoWay}" />
+                                    <Button Grid.Column="1" Content="Preview" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="PeripheralDim" />
+                                    <ToggleSwitch Grid.Row="1" Header="Shade off-task windows" OffContent="Off" OnContent="Armed" IsOn="{x:Bind ViewModel.WindowFirewallEnabled, Mode=TwoWay}" />
+                                    <Button Grid.Row="1" Grid.Column="1" Content="Preview" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="WindowFirewall" />
+                                    <ToggleSwitch Grid.Row="2" Header="Gaze spotlight (needs a live camera)" OffContent="Off" OnContent="Armed" IsOn="{x:Bind ViewModel.GazeSpotlightEnabled, Mode=TwoWay}" />
+                                    <Button Grid.Row="2" Grid.Column="1" Content="Preview" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="GazeSpotlight" />
+                                    <ToggleSwitch Grid.Row="3" Header="Pointer guard (keeps the cursor in the task window)" OffContent="Off" OnContent="Armed" IsOn="{x:Bind ViewModel.PointerGuardEnabled, Mode=TwoWay}" />
+                                    <Button Grid.Row="3" Grid.Column="1" Content="Preview" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="PointerGuard" />
+                                    <ToggleSwitch Grid.Row="4" Header="Audio shield" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.AudioShieldEnabled, Mode=TwoWay}" />
+                                    <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Spacing="4" Margin="0,8,0,0">
+                                        <TextBlock Text="Check-ins (always on during a session)" FontWeight="SemiBold" />
+                                        <TextBlock Text="Beacon pulse when drifting, intention gate when distracted, context reminder when you come back." Style="{StaticResource Hint}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Spacing="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Preview beacon" Command="{x:Bind ViewModel.PreviewBeaconCommand}" />
+                                            <Button Content="Test shake" Command="{x:Bind ViewModel.TestBeaconShakeCommand}" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Preview intention gate" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="IntentionGate" />
+                                            <Button Content="Preview reminder" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="ContextReminder" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- CAMERA: discovery, gaze test, calibration -->
+                <ScrollViewer x:Name="CameraSection" Visibility="Collapsed">
+                    <Grid MaxWidth="1100" Padding="28,20,28,32" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Camera and gaze" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="Frames stay on this PC and are turned into gaze coordinates only. No video is stored." Style="{StaticResource Hint}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Find cameras" Command="{x:Bind ViewModel.RefreshCamerasCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button Content="Start gaze test" Command="{x:Bind ViewModel.StartGazeTestCommand}" />
                                     <Button Content="Stop" Command="{x:Bind ViewModel.StopGazeTestCommand}" />
                                 </StackPanel>
-                            </Grid>
-                            <ComboBox Header="Camera" ItemsSource="{x:Bind ViewModel.CameraDevices, Mode=OneWay}"
-                                      SelectedItem="{x:Bind ViewModel.SelectedCamera, Mode=TwoWay}"
-                                      DisplayMemberPath="Name" PlaceholderText="Select Find cameras first" />
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <ToggleSwitch Header="Mirror camera" IsOn="{x:Bind ViewModel.GazeMirror, Mode=TwoWay}" />
-                                <NumberBox Grid.Column="1" Header="Rotation (0 / 90 / 180 / 270)" Minimum="0" Maximum="270" SmallChange="90"
-                                           SpinButtonPlacementMode="Inline" Value="{x:Bind ViewModel.GazeRotationDegrees, Mode=TwoWay}" />
-                            </Grid>
-                            <TextBlock Text="Horizontal offset" FontSize="12" />
-                            <Slider Minimum="-0.5" Maximum="0.5" StepFrequency="0.01" Value="{x:Bind ViewModel.GazeOffsetX, Mode=TwoWay}" />
-                            <TextBlock Text="Vertical offset" FontSize="12" />
-                            <Slider Minimum="-0.5" Maximum="0.5" StepFrequency="0.01" Value="{x:Bind ViewModel.GazeOffsetY, Mode=TwoWay}" />
-                            <TextBlock Text="Smoothing" FontSize="12" />
-                            <Slider Minimum="0" Maximum="0.95" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeSmoothing, Mode=TwoWay}" />
-                            <TextBlock Text="Sensitivity" FontSize="12" />
-                            <Slider Minimum="0.25" Maximum="3" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeSensitivity, Mode=TwoWay}" />
-                            <TextBlock Text="Minimum confidence" FontSize="12" />
-                            <Slider Minimum="0" Maximum="1" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeMinimumConfidence, Mode=TwoWay}" />
-                            <Button Content="Apply adjustments" HorizontalAlignment="Left" Command="{x:Bind ViewModel.ApplyGazeSettingsCommand}" />
-                            <Border Height="190" CornerRadius="12" Background="#FF111722" BorderBrush="#334A5A77" BorderThickness="1">
-                                <Grid>
-                                    <Image Source="{x:Bind ViewModel.GazePreviewSource, Mode=OneWay}" Stretch="UniformToFill" />
-                                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
-                                        <TextBlock Text="{x:Bind ViewModel.GazeCoordinates, Mode=OneWay}" FontSize="11" />
-                                    </Border>
-                                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
-                                        <TextBlock Text="{x:Bind ViewModel.GazeConfidenceLabel, Mode=OneWay}" Foreground="#AFC1FF" />
-                                    </Border>
-                                </Grid>
-                            </Border>
-                            <Border Padding="12" CornerRadius="12" Background="#241C2941">
+                                <ComboBox Header="Camera" ItemsSource="{x:Bind ViewModel.CameraDevices, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedCamera, Mode=TwoWay}"
+                                          DisplayMemberPath="Name" PlaceholderText="Press Find cameras" HorizontalAlignment="Stretch" />
+                                <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ViewModel.GazeStatusMessage, Mode=OneWay}" />
+                                <Border Height="240" CornerRadius="12" Background="#FF111722" BorderBrush="#334A5A77" BorderThickness="1">
+                                    <Grid>
+                                        <TextBlock Text="Preview appears here while a gaze test runs" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Hint}" />
+                                        <Image Source="{x:Bind ViewModel.GazePreviewSource, Mode=OneWay}" Stretch="UniformToFill" />
+                                        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
+                                            <TextBlock Text="{x:Bind ViewModel.GazeCoordinates, Mode=OneWay}" FontSize="11" />
+                                        </Border>
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
+                                            <TextBlock Text="{x:Bind ViewModel.GazeConfidenceLabel, Mode=OneWay}" Foreground="#AFC1FF" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <Border Padding="12" CornerRadius="12" Background="#241C2941">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Nine-point calibration" FontWeight="SemiBold" />
+                                            <TextBlock Text="Look at the named screen position, hold still, then capture." Style="{StaticResource Hint}" />
+                                            <TextBlock Text="{x:Bind ViewModel.CalibrationTarget, Mode=OneWay}" FontSize="18" Foreground="#AFC1FF" Margin="0,8,0,0" />
+                                            <TextBlock Text="{x:Bind ViewModel.CalibrationProgressLabel, Mode=OneWay}" FontSize="12" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Capture point" VerticalAlignment="Center" Command="{x:Bind ViewModel.CaptureCalibrationPointCommand}" />
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Tuning" Style="{StaticResource CardTitle}" />
                                 <Grid ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="Nine-point calibration" FontWeight="SemiBold" />
-                                        <TextBlock Text="Look at the named screen position and hold still, then capture."
-                                                   FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        <TextBlock Text="{x:Bind ViewModel.CalibrationTarget, Mode=OneWay}" FontSize="18" Foreground="#AFC1FF" Margin="0,8,0,0" />
-                                        <TextBlock Text="{x:Bind ViewModel.CalibrationProgressLabel, Mode=OneWay}" FontSize="12" />
-                                    </StackPanel>
-                                    <Button Grid.Column="1" Content="Capture point" VerticalAlignment="Center"
-                                            Command="{x:Bind ViewModel.CaptureCalibrationPointCommand}" />
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <ToggleSwitch Header="Mirror camera" IsOn="{x:Bind ViewModel.GazeMirror, Mode=TwoWay}" />
+                                    <NumberBox Grid.Column="1" Header="Rotation (0 / 90 / 180 / 270)" Minimum="0" Maximum="270" SmallChange="90"
+                                               SpinButtonPlacementMode="Inline" Value="{x:Bind ViewModel.GazeRotationDegrees, Mode=TwoWay}" />
                                 </Grid>
-                            </Border>
-                            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
-                                     Message="{x:Bind ViewModel.GazeStatusMessage, Mode=OneWay}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="Focus toolkit" FontSize="19" FontWeight="SemiBold" />
-                            <ToggleSwitch Header="Dynamic image blur" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.BlurImagesEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Hide future text" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.HideFutureTextEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Pause distracting animations" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.SuppressAnimationsEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Visual focus filter" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.VisualFilterEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Gaze spotlight" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.GazeSpotlightEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Low-relevance window firewall" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.WindowFirewallEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Pointer guard" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.PointerGuardEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Audio shield" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.AudioShieldEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Header="Reduced motion" OffContent="Off" OnContent="On" IsOn="{x:Bind ViewModel.ReducedMotion, Mode=TwoWay}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Preview beacon" Command="{x:Bind ViewModel.PreviewBeaconCommand}" />
-                                <Button Content="Test attention shake" Command="{x:Bind ViewModel.TestBeaconShakeCommand}" />
+                                <Slider Header="Horizontal offset" Minimum="-0.5" Maximum="0.5" StepFrequency="0.01" Value="{x:Bind ViewModel.GazeOffsetX, Mode=TwoWay}" />
+                                <Slider Header="Vertical offset" Minimum="-0.5" Maximum="0.5" StepFrequency="0.01" Value="{x:Bind ViewModel.GazeOffsetY, Mode=TwoWay}" />
+                                <Slider Header="Smoothing" Minimum="0" Maximum="0.95" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeSmoothing, Mode=TwoWay}" />
+                                <Slider Header="Sensitivity" Minimum="0.25" Maximum="3" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeSensitivity, Mode=TwoWay}" />
+                                <Slider Header="Minimum confidence" Minimum="0" Maximum="1" StepFrequency="0.05" Value="{x:Bind ViewModel.GazeMinimumConfidence, Mode=TwoWay}" />
+                                <Button Content="Apply adjustments" HorizontalAlignment="Left" Command="{x:Bind ViewModel.ApplyGazeSettingsCommand}" />
+                                <TextBlock Text="If no camera is listed: check Windows Settings → Privacy → Camera, close other apps using the camera, and make sure the worker runtime (Media Foundation + Visual C++ redistributable) is installed. The status above says which of these failed."
+                                           Style="{StaticResource Hint}" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Preview spotlight" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="GazeSpotlight" />
-                                <Button Content="Preview dim" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="PeripheralDim" />
-                                <Button Content="Preview firewall" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="WindowFirewall" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Preview intention gate" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="IntentionGate" />
-                                <Button Content="Preview context reminder" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="ContextReminder" />
-                                <Button Content="Preview pointer guard" Command="{x:Bind ViewModel.PreviewToolkitCommand}" CommandParameter="PointerGuard" />
-                            </StackPanel>
-                            <TextBlock Text="{x:Bind ViewModel.ToolkitStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Padding="22" CornerRadius="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="Privacy by design" FontSize="19" FontWeight="SemiBold" />
-                            <TextBlock Text="• Raw keystrokes are never stored" TextWrapping="Wrap" />
-                            <TextBlock Text="• Window context is redacted before storage" TextWrapping="Wrap" />
-                            <TextBlock Text="• No screenshot stream leaves this device" TextWrapping="Wrap" />
-                            <TextBlock Text="• Password and secure windows suppress interventions" TextWrapping="Wrap" />
-                            <TextBlock Text="• All restrictions fail open" TextWrapping="Wrap" />
-                            <Button Content="Delete local history" HorizontalAlignment="Left" Command="{x:Bind ViewModel.DeleteLocalHistoryCommand}" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Grid>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
 
-            <TextBlock Grid.Row="3" Text="Anchor is assistive—not diagnostic. It estimates attention from interaction patterns and may be wrong."
-                       HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </Grid>
-    </ScrollViewer>
+                <!-- INSIGHTS: timeline, stats, recording -->
+                <ScrollViewer x:Name="InsightsSection" Visibility="Collapsed">
+                    <Grid MaxWidth="1100" Padding="28,20,28,32" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.3*" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="16">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource CardStyle}" Padding="16">
+                                    <StackPanel><TextBlock Text="Focused" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.FocusedDuration, Mode=OneWay}" Style="{StaticResource Metric}" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource CardStyle}" Padding="16">
+                                    <StackPanel><TextBlock Text="Interruptions" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.InterruptionCount, Mode=OneWay}" Style="{StaticResource Metric}" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="16">
+                                    <StackPanel><TextBlock Text="Recovery time" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.RecoveryDuration, Mode=OneWay}" Style="{StaticResource Metric}" /></StackPanel>
+                                </Border>
+                            </Grid>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Session timeline" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="State changes, interventions, progress you logged, and evidence Anchor spotted." Style="{StaticResource Hint}" />
+                                    <ListView ItemsSource="{x:Bind ViewModel.Timeline, Mode=OneWay}" MaxHeight="420" SelectionMode="None">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="0,7" ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="70" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Time}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" TextWrapping="Wrap" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="12">
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock Text="Study recording" Style="{StaticResource CardTitle}" />
+                                        <TextBlock Text="Record screen + gaze locally to compare sessions with and without Anchor" Style="{StaticResource Hint}" />
+                                    </StackPanel>
+                                    <Border HorizontalAlignment="Right" Padding="10,6" CornerRadius="12" Background="#332E5CFF">
+                                        <TextBlock Text="{x:Bind ViewModel.RecordingElapsed, Mode=OneWay}" Foreground="#AFC1FF" />
+                                    </Border>
+                                </Grid>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBox Header="Participant code" Text="{x:Bind ViewModel.ParticipantCode, Mode=TwoWay}" PlaceholderText="P01 (pseudonym only)" />
+                                    <ComboBox Grid.Column="1" Header="Trial mode" SelectedIndex="{x:Bind ViewModel.RecordingModeIndex, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                        <ComboBoxItem Content="Baseline · interventions off" />
+                                        <ComboBoxItem Content="Anchor enabled" />
+                                    </ComboBox>
+                                </Grid>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBox Header="Output folder" Text="{x:Bind ViewModel.RecordingOutputFolder, Mode=TwoWay}" />
+                                    <Button Grid.Column="1" Content="Choose…" VerticalAlignment="Bottom" Command="{x:Bind ViewModel.ChooseRecordingFolderCommand}" />
+                                </Grid>
+                                <ToggleSwitch Header="Include webcam thumbnail" IsOn="{x:Bind ViewModel.WebcamRecordingConsent, Mode=TwoWay}"
+                                              IsEnabled="False" OffContent="Unavailable in this release" />
+                                <TextBlock Text="Display 1 · 15 FPS · audio off · gaze point and task state are composited into the MP4" Style="{StaticResource Hint}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Start recording" Command="{x:Bind ViewModel.StartRecordingCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button Content="Stop" Command="{x:Bind ViewModel.StopRecordingCommand}" />
+                                    <Button Content="Open folder" Command="{x:Bind ViewModel.OpenRecordingFolderCommand}" />
+                                </StackPanel>
+                                <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ViewModel.RecordingStatus, Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind ViewModel.LatestRecordingFiles, Mode=OneWay}" Style="{StaticResource Hint}" />
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Button Content="Compare recordings" HorizontalAlignment="Left" Command="{x:Bind ViewModel.CompareRecordingsCommand}" />
+                                <TextBlock Text="{x:Bind ViewModel.ComparisonReport, Mode=OneWay}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- SETTINGS: intelligence, privacy -->
+                <ScrollViewer x:Name="SettingsSection" Visibility="Collapsed">
+                    <Grid MaxWidth="1100" Padding="28,20,28,32" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="DeepSeek intelligence (optional)" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="With a key, DeepSeek writes richer task plans and judges window relevance. Without one Anchor uses its built-in local planner and keyword relevance — plans are labelled 'Local fallback'."
+                                           Style="{StaticResource Hint}" />
+                                <ToggleSwitch Header="Use DeepSeek for task plans and relevance" IsOn="{x:Bind ViewModel.DeepSeekEnabled, Mode=TwoWay}" />
+                                <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="Stored encrypted for this Windows account"
+                                             PasswordChanged="DeepSeekKeyBox_PasswordChanged" />
+                                <Button Content="Save DeepSeek settings" HorizontalAlignment="Left" Command="{x:Bind ViewModel.SaveDeepSeekSettingsCommand}" />
+                                <TextBlock Text="{x:Bind ViewModel.DeepSeekStatus, Mode=OneWay}" Style="{StaticResource Hint}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Privacy by design" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="• Raw keystrokes are never stored — only counts and rhythm" TextWrapping="Wrap" />
+                                <TextBlock Text="• Window titles are redacted before storage" TextWrapping="Wrap" />
+                                <TextBlock Text="• Camera frames become gaze coordinates on-device; no video leaves this PC" TextWrapping="Wrap" />
+                                <TextBlock Text="• Password and secure windows suppress interventions" TextWrapping="Wrap" />
+                                <TextBlock Text="• All restrictions fail open; Esc always releases" TextWrapping="Wrap" />
+                                <Button Content="Delete local history" HorizontalAlignment="Left" Command="{x:Bind ViewModel.DeleteLocalHistoryCommand}" />
+                                <TextBlock Text="Anchor is assistive — not diagnostic. It estimates attention from interaction patterns and may be wrong." Style="{StaticResource Hint}" Margin="0,12,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+        </NavigationView>
+    </Grid>
 </Page>

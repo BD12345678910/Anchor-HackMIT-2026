@@ -2,8 +2,9 @@
 <Window
     x:Class="Anchor_Desktop.Overlays.GoalBeaconWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border x:Name="BeaconCard" Margin="8" Padding="18,12" CornerRadius="16"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Anchor overlay">
+    <Border x:Name="BeaconCard" Margin="8" Padding="18,12" CornerRadius="16" RequestedTheme="Dark"
             Background="#F51D2433" BorderBrush="#587AEF" BorderThickness="1">
         <Border.RenderTransform>
             <TranslateTransform x:Name="BeaconTranslation" />

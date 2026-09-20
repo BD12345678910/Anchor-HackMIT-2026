@@ -69,6 +69,7 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
 
         var inputEvent = _input.Snapshot(now);
         _events?.Writer.TryWrite(inputEvent);
+        _foreground?.Refresh();
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
         var title = GetFeature(foreground, "title");
@@ -94,7 +95,11 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             timestamp: now);
     }
 
-    public void ProcessRawInput(IntPtr rawInputHandle) => _input?.ProcessRawInput(rawInputHandle);
+    /// <summary>Feeds raw input to the active session (if any) and returns the key-down virtual key.</summary>
+    public ushort? ProcessRawInput(IntPtr rawInputHandle) =>
+        _input is null
+            ? InputActivitySensor.PeekKeyDown(rawInputHandle)
+            : _input.ProcessRawInput(rawInputHandle);
 
     public ContextObservation CreateContextObservation(
         string taskTitle,
@@ -138,6 +143,7 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         string currentSubtask,
         IReadOnlyList<string>? userRelevantTargets = null)
     {
+        _foreground?.Refresh();
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
         var title = GetFeature(foreground, "title");

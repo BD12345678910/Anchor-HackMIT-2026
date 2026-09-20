@@ -116,13 +116,55 @@ public sealed class InputActivitySensor
         }
     }
 
-    public void ProcessRawInput(IntPtr rawInputHandle)
+    /// <summary>Records the input and returns the virtual key when it was a key-down.</summary>
+    public ushort? ProcessRawInput(IntPtr rawInputHandle)
     {
+        if (!TryReadRawInput(rawInputHandle, out var input))
+        {
+            return null;
+        }
+
+        if (input.Header.Type == RimTypeMouse)
+        {
+            RecordMouseDelta(input.Data.Mouse.LastX, input.Data.Mouse.LastY);
+            if ((input.Data.Mouse.ButtonFlags & RiMouseWheel) != 0)
+            {
+                RecordScrollDelta((short)input.Data.Mouse.ButtonData);
+            }
+            return null;
+        }
+
+        if (input.Header.Type == RimTypeKeyboard
+            && input.Data.Keyboard.Message is WmKeyDown or WmSysKeyDown)
+        {
+            RecordKeyDown(CategorizeVirtualKey(input.Data.Keyboard.VirtualKey));
+            return input.Data.Keyboard.VirtualKey;
+        }
+
+        return null;
+    }
+
+    /// <summary>Returns the virtual key of a key-down raw input without recording activity.</summary>
+    public static ushort? PeekKeyDown(IntPtr rawInputHandle)
+    {
+        if (!TryReadRawInput(rawInputHandle, out var input)
+            || input.Header.Type != RimTypeKeyboard
+            || input.Data.Keyboard.Message is not (WmKeyDown or WmSysKeyDown))
+        {
+            return null;
+        }
+
+        return input.Data.Keyboard.VirtualKey;
+    }
+
+    private static bool TryReadRawInput(IntPtr rawInputHandle, out RawInput input)
+    {
+        input = default;
         uint size = 0;
         var headerSize = (uint)Marshal.SizeOf<RawInputHeader>();
         if (GetRawInputData(rawInputHandle, RidInput, IntPtr.Zero, ref size, headerSize) == uint.MaxValue || size == 0)
         {
-            return;
+            return false;
         }
 
         var buffer = Marshal.AllocHGlobal(checked((int)size));
@@ -130,23 +172,11 @@ public sealed class InputActivitySensor
         {
             if (GetRawInputData(rawInputHandle, RidInput, buffer, ref size, headerSize) != size)
             {
-                return;
+                return false;
             }
 
-            var input = Marshal.PtrToStructure<RawInput>(buffer);
-            if (input.Header.Type == RimTypeMouse)
-            {
-                RecordMouseDelta(input.Data.Mouse.LastX, input.Data.Mouse.LastY);
-                if ((input.Data.Mouse.ButtonFlags & RiMouseWheel) != 0)
-                {
-                    RecordScrollDelta((short)input.Data.Mouse.ButtonData);
-                }
-            }
-            else if (input.Header.Type == RimTypeKeyboard
-                && input.Data.Keyboard.Message is WmKeyDown or WmSysKeyDown)
-            {
-                RecordKeyDown(CategorizeVirtualKey(input.Data.Keyboard.VirtualKey));
-            }
+            input = Marshal.PtrToStructure<RawInput>(buffer);
+            return true;
         }
         finally
         {

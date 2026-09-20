@@ -89,7 +89,11 @@ public sealed partial class MainWindow : Window
     {
         if (message == WmInput)
         {
-            App.Services.Sensors.ProcessRawInput(lParam);
+            if (App.Services.Sensors.ProcessRawInput(lParam) == VkEscape
+                && App.Services.Overlays.HasAnyOverlay)
+            {
+                App.DispatcherQueue.TryEnqueue(() => App.Services.Watchdog.Signal(SafetyReleaseReason.Escape));
+            }
         }
         else if (message == WmKeyDown && wParam.ToInt32() == VkEscape)
         {

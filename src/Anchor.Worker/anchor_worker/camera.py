@@ -35,7 +35,7 @@ class FaceLandmarkDetector(Protocol):
 
 class CameraDeviceProbe:
     @staticmethod
-    def list_devices(cv2_module: Any, max_index: int = 5) -> list[CameraDevice]:
+    def list_devices(cv2_module: Any, max_index: int = 8) -> list[CameraDevice]:
         devices: list[CameraDevice] = []
         for index in range(max(0, max_index)):
             capture = CameraDeviceProbe.open_device(cv2_module, index)
@@ -250,14 +250,23 @@ class CameraGazeTracker:
 
         self._cv2 = cv2
         if self._detector is None:
-            self._detector = MediaPipeFaceMeshDetector(cv2_module=cv2)
+            try:
+                self._detector = MediaPipeFaceMeshDetector(cv2_module=cv2)
+            except ImportError as error:
+                raise RuntimeError(
+                    "the MediaPipe face model could not load on this Windows install "
+                    f"({error}). Install the Media Foundation feature and the latest "
+                    "Microsoft Visual C++ redistributable, then retry."
+                ) from error
         self._capture = CameraDeviceProbe.open_device(
             cv2,
             self._configuration.camera_index,
         )
         if self._capture is None:
             raise RuntimeError(
-                f"camera {self._configuration.camera_index + 1} could not be opened"
+                f"camera {self._configuration.camera_index + 1} could not be opened. "
+                "Close other apps using it and allow desktop apps under "
+                "Settings > Privacy & security > Camera."
             )
         self._stop.clear()
         self._thread = Thread(target=self._capture_loop, name="anchor-gaze", daemon=True)

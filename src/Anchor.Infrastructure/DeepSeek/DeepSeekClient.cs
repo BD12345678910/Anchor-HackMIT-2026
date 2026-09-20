@@ -280,9 +280,9 @@ public sealed class DeepSeekClient : ITaskIntelligence
         return new(null, "deepseek_unavailable");
     }
 
-    private TaskPlanningResult FallbackPlan(string goal, string errorCode) =>
+    private static TaskPlanningResult FallbackPlan(string goal, string errorCode) =>
         new(
-            new TaskPlan(goal, [new TaskStep("step-1", goal, "User confirms completion")]),
+            new TaskPlanManager().Start(LocalTaskPlanner.Plan(goal)).Plan,
             true,
             "Local fallback",
             errorCode);

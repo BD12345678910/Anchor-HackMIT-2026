@@ -10,7 +10,7 @@ const thresholdValue = document.querySelector("#thresholdValue");
 const status = document.querySelector("#status");
 
 async function load() {
-  const saved = await chrome.storage.sync.get({ imageBlur: true, threshold: 0.62, futureTextMask: false, suppressAnimations: false, lookahead: 1, deniedOrigins: [] });
+  const saved = await chrome.storage.sync.get({ imageBlur: true, threshold: 0.5, futureTextMask: false, suppressAnimations: false, lookahead: 1, deniedOrigins: [] });
   fields.imageBlur.checked = saved.imageBlur;
   fields.threshold.value = saved.threshold;
   fields.futureTextMask.checked = saved.futureTextMask;

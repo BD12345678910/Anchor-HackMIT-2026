@@ -21,6 +21,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     private WindowFirewallWindow? _firewall;
     private ToolkitState _toolkitState = ToolkitState.Off;
     private (double X, double Y, DateTimeOffset At)? _lastSpotlight;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _previewTimer;
+    private int _focusedTicks;
+
+    private static readonly TimeSpan PreviewDuration = TimeSpan.FromSeconds(8);
 
     public OverlayPresenter(NativeBridgeServer? browserBridge = null)
     {
@@ -41,6 +45,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         || _spotlight is not null
         || _firewall is not null
         || _pointer.IsConfined;
+    public bool HasAnyOverlay => HasRestrictiveOverlay || _recovery is not null || _beacon is not null;
+
+    /// <summary>Raised after every overlay has been closed, so bound status text can stop claiming one is showing.</summary>
+    public event EventHandler? OverlaysCleared;
     public ToolkitState CurrentToolkitState => _toolkitState;
 
     public async Task<IReadOnlyList<ToolkitApplyResult>> SetToolkitStateAsync(
@@ -80,7 +88,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
             if (state.PeripheralDim)
             {
-                results.Add(new(ToolkitFeature.PeripheralDim, "Armed for distraction", _filter is not null));
+                results.Add(new(
+                    ToolkitFeature.PeripheralDim,
+                    _filter is not null ? "Dimming the desktop now" : "Armed · dims the desktop when distraction is confirmed",
+                    _filter is not null));
             }
             else
             {
@@ -90,7 +101,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
             if (state.WindowFirewall)
             {
-                results.Add(new(ToolkitFeature.WindowFirewall, "Armed for low-relevance windows", _firewall is not null));
+                results.Add(new(
+                    ToolkitFeature.WindowFirewall,
+                    _firewall is not null ? "Shading the off-task window now" : "Armed · shades off-task windows while drifting",
+                    _firewall is not null));
             }
             else
             {
@@ -105,11 +119,13 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             }
             results.Add(new(
                 ToolkitFeature.GazeSpotlight,
-                state.GazeSpotlight ? "Active · waiting for confident gaze" : "Off",
+                state.GazeSpotlight
+                    ? (_spotlight is not null ? "Following your gaze" : "Armed · needs a live camera (Test gaze)")
+                    : "Off",
                 _spotlight is not null));
             results.Add(new(
                 ToolkitFeature.PointerGuard,
-                state.PointerGuard ? "Active for intention gates" : "Off",
+                state.PointerGuard ? "Armed · confines the pointer during intention gates" : "Off",
                 _pointer.IsConfined));
         });
         return results;
@@ -148,9 +164,101 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     ShowGate("pointer guard preview");
                     break;
             }
-            result ??= new ToolkitApplyResult(feature, "Previewing", true);
+            var timed = feature is ToolkitFeature.GazeSpotlight or ToolkitFeature.PeripheralDim or ToolkitFeature.WindowFirewall;
+            if (timed)
+            {
+                SchedulePreviewClear();
+            }
+            result ??= new ToolkitApplyResult(
+                feature,
+                timed
+                    ? $"Previewing for {PreviewDuration.TotalSeconds:0} s · Esc clears it now"
+                    : "Previewing · use the card's buttons or Esc to close it",
+                true);
         });
         return result!;
+    }
+
+    /// <summary>Drives the armed desktop tools from the fused attention state.</summary>
+    public Task UpdateAttentionAsync(AttentionPrediction prediction, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prediction);
+        cancellationToken.ThrowIfCancellationRequested();
+        return App.DispatcherQueue.EnqueueAsync(() =>
+        {
+            if (_toolkitState.SecureWindow)
+            {
+                return;
+            }
+
+            var offTask = prediction.ReasonCodes.Contains("low_task_relevance", StringComparer.Ordinal)
+                || prediction.ReasonCodes.Contains("off_task_window", StringComparer.Ordinal);
+            switch (prediction.State)
+            {
+                case AttentionState.Drifting when offTask:
+                case AttentionState.Distracted when offTask:
+                    _focusedTicks = 0;
+                    if (_toolkitState.WindowFirewall)
+                    {
+                        ShowFirewall();
+                    }
+                    if (prediction.State == AttentionState.Distracted && EnableVisualFilter && _gate is null)
+                    {
+                        ShowFilter();
+                    }
+                    break;
+                case AttentionState.Focused:
+                case AttentionState.Recovering:
+                case AttentionState.Drifting:
+                case AttentionState.Distracted:
+                    // Off-task treatments end once the foreground is task-relevant again, even if the
+                    // user is merely idle there. A gate the user is looking at stays; one left in the
+                    // background is dismissed, since Windows may never have let it take focus.
+                    if (++_focusedTicks >= 2 && _previewTimer is null && (_gate is null || !_gate.IsActive))
+                    {
+                        Close(ref _gate);
+                        Close(ref _firewall);
+                        Close(ref _filter);
+                        if (!HasAnyOverlay)
+                        {
+                            OverlaysCleared?.Invoke(this, EventArgs.Empty);
+                        }
+                    }
+                    break;
+                default:
+                    _focusedTicks = 0;
+                    break;
+            }
+        });
+    }
+
+    private void SchedulePreviewClear()
+    {
+        _previewTimer?.Stop();
+        _previewTimer ??= App.DispatcherQueue.CreateTimer();
+        _previewTimer.IsRepeating = false;
+        _previewTimer.Interval = PreviewDuration;
+        _previewTimer.Tick -= PreviewTimer_Tick;
+        _previewTimer.Tick += PreviewTimer_Tick;
+        _previewTimer.Start();
+    }
+
+    private void PreviewTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        sender.Tick -= PreviewTimer_Tick;
+        _previewTimer = null;
+        if (_gate is null)
+        {
+            Close(ref _filter);
+        }
+        Close(ref _spotlight);
+        Close(ref _firewall);
+        _lastSpotlight = null;
+        if (!HasAnyOverlay)
+        {
+            OverlaysCleared?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public Task UpdateGazeAsync(
@@ -229,7 +337,6 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     {
         _beacon ??= new GoalBeaconWindow();
         _beacon.SetGoal(TaskTitle, CurrentSubtask, ProgressLabel, pulse, ReducedMotion);
-        _beacon.Activate();
         OverlayWindowHelper.Configure(_beacon, 500, 118, clickThrough: true);
     }
 
@@ -250,6 +357,9 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
     public void ClearOverlays()
     {
+        _previewTimer?.Stop();
+        _previewTimer = null;
+        _focusedTicks = 0;
         ReleasePointer();
         Close(ref _beacon);
         Close(ref _filter);
@@ -258,6 +368,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         Close(ref _spotlight);
         Close(ref _firewall);
         _lastSpotlight = null;
+        OverlaysCleared?.Invoke(this, EventArgs.Empty);
     }
 
     public void ReleaseHooks()
@@ -267,7 +378,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
     private void ShowFilter()
     {
-        if (_filter is null)
+        var filter = _filter;
+        if (filter is null)
         {
             var window = new VisualFilterWindow();
             window.Closed += (_, _) =>
@@ -277,10 +389,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     _filter = null;
                 }
             };
-            _filter = window;
+            _filter = filter = window;
         }
-        _filter.Activate();
-        OverlayWindowHelper.Configure(_filter, 0, 0, clickThrough: true, fullScreen: true);
+        OverlayWindowHelper.Configure(filter, 0, 0, clickThrough: true, fullScreen: true);
+        OverlayWindowHelper.MakeTranslucent(filter, 0x70);
     }
 
     private void ShowRecovery(ContextCapsule? capsule, string reason)
@@ -391,6 +503,10 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 App.Services.Watchdog.Signal(SafetyReleaseReason.FocusLost);
             }
         };
+        if (EnableVisualFilter)
+        {
+            ShowFilter();
+        }
         _gate.Activate();
         OverlayWindowHelper.Center(_gate, 780, 430);
         if (EnablePointerGuard)
@@ -402,10 +518,6 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 Math.Max(0, (height - 420) / 2),
                 Math.Min(width, (width + 620) / 2),
                 Math.Min(height, (height + 420) / 2)));
-        }
-        if (EnableVisualFilter)
-        {
-            ShowFilter();
         }
     }
 
@@ -426,9 +538,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             };
             _spotlight = window;
         }
-        _spotlight.Activate();
-        OverlayWindowHelper.ConfigureBounds(_spotlight, work, clickThrough: true);
-        _spotlight.SetAperture(normalizedX, normalizedY, 220, work.Width, work.Height);
+        _spotlight.SetAperture(normalizedX, normalizedY, 220, work);
     }
 
     private bool ShowFirewall()
@@ -465,11 +575,12 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             };
             _firewall = window;
         }
-        _firewall.Activate();
+        var firewall = _firewall;
         OverlayWindowHelper.ConfigureBounds(
-            _firewall,
+            firewall,
             new RectInt32(clipped.X, clipped.Y, clipped.Width, clipped.Height),
             clickThrough: true);
+        OverlayWindowHelper.MakeTranslucent(firewall, 0xB4);
         return true;
     }
 
