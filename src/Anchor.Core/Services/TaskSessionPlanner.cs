@@ -76,6 +76,16 @@ public sealed class TaskSessionPlanner
         CancellationToken cancellationToken = default) =>
         _intelligence.JudgeProgressAsync(evidence, cancellationToken);
 
+    public Task<PictureGrading> GradePicturesAsync(
+        PictureGradingRequest request,
+        CancellationToken cancellationToken = default) =>
+        _intelligence.GradePicturesAsync(request, cancellationToken);
+
+    public Task<TextGrading> GradeTextBlocksAsync(
+        TextGradingRequest request,
+        CancellationToken cancellationToken = default) =>
+        _intelligence.GradeTextBlocksAsync(request, cancellationToken);
+
     public Task<ContextReminder> ComposeReminderAsync(
         ContextCapsule capsule,
         CancellationToken cancellationToken = default) =>

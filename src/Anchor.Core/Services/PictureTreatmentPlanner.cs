@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Anchor.Core.Models;
 
 namespace Anchor.Core.Services;
@@ -25,37 +27,69 @@ public sealed record PictureSceneContext(
 }
 
 /// <summary>
-/// Chooses a treatment per detected picture from three cues: whether the front window is
-/// task-relevant, whether the picture sits where ads live (side rails, thin banners), and
-/// whether the OCR text around it (caption, adjacent paragraph) shares vocabulary with the task.
+/// Turns detected pictures into descriptors (the caption / adjacent text, whether the shape
+/// is ad-like) and maps a semantic verdict — DeepSeek's when configured, otherwise the local
+/// vocabulary heuristic — onto a treatment. Pictures in an off-task window are always mosaicked.
 /// </summary>
 public static class PictureTreatmentPlanner
 {
     private const double CaptionReach = 72;
     private const double SideTextReach = 48;
     private const double RailShare = 0.28;
+    public const int MaxNearbyChars = 220;
 
-    public static PictureTreatment Plan(PixelRect region, PictureSceneContext context)
+    /// <param name="pixelHash">Perceptual hash of the picture's pixels, when the capture is available; makes the key follow the picture rather than its caption.</param>
+    /// <param name="thumbnailDataUrl">Small JPEG of the picture as a data URL for vision grading.</param>
+    public static PictureDescriptor Describe(PixelRect region, PictureSceneContext context, string? pixelHash = null, string? thumbnailDataUrl = null)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        var nearby = Bound(string.Join(' ', NearbyText(region, context.Lines)), MaxNearbyChars);
+        var adShaped = LooksLikeAd(region, context.WindowWidth, context.WindowHeight);
+        var key = !string.IsNullOrEmpty(pixelHash)
+            ? "pix:" + pixelHash
+            : nearby.Length > 0
+            ? "text:" + Hash(Normalize(nearby))
+            : $"shape:{SizeBucket(region.Width)}x{SizeBucket(region.Height)}:{(adShaped ? "ad" : "content")}";
+        return new PictureDescriptor(key, nearby, adShaped, region.Width, region.Height, thumbnailDataUrl);
+    }
+
+    /// <summary>Treatment for a picture given the window verdict and, when known, its semantic verdict.</summary>
+    public static PictureTreatment Plan(PictureDescriptor picture, PictureSceneContext context, PictureRelevance? verdict)
+    {
+        ArgumentNullException.ThrowIfNull(picture);
         ArgumentNullException.ThrowIfNull(context);
         if (!context.WindowRelevant)
         {
             return PictureTreatment.Mosaic;
         }
-
-        if (LooksLikeAd(region, context.WindowWidth, context.WindowHeight))
+        return verdict switch
         {
-            return PictureTreatment.Mosaic;
-        }
+            PictureRelevance.Illustrates => PictureTreatment.Soften,
+            PictureRelevance.Unrelated => PictureTreatment.Pixelate,
+            PictureRelevance.Bait => PictureTreatment.Mosaic,
+            // Verdict still pending: on a relevant page keep pictures readable rather than
+            // punishing the user while the grader catches up; only ad shapes are mosaicked.
+            _ => picture.AdShaped ? PictureTreatment.Mosaic : PictureTreatment.Soften
+        };
+    }
 
-        var nearby = TaskEvidenceMatcher.Tokenize(string.Join(' ', NearbyText(region, context.Lines)));
-        if (nearby.Count == 0 || context.TaskTokens.Count == 0)
+    /// <summary>Vocabulary heuristic used when DeepSeek is unavailable.</summary>
+    public static PictureGrading LocalGrade(PictureGradingRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var taskTokens = TaskTokens(request.Goal, request.CurrentSubtask, request.WindowTitle);
+        var verdicts = new Dictionary<string, PictureRelevance>(StringComparer.Ordinal);
+        foreach (var picture in request.Pictures)
         {
-            return PictureTreatment.Pixelate;
+            verdicts[picture.Key] = picture.AdShaped
+                ? PictureRelevance.Bait
+                : Matches(picture.NearbyText, taskTokens)
+                    ? PictureRelevance.Illustrates
+                    : picture.NearbyText.Length == 0
+                        ? PictureRelevance.Illustrates
+                        : PictureRelevance.Unrelated;
         }
-
-        var matches = context.TaskTokens.Count(token => nearby.Any(word => SameWord(word, token)));
-        return matches > 0 ? PictureTreatment.Soften : PictureTreatment.Pixelate;
+        return new PictureGrading(verdicts, "Local rules", true);
     }
 
     /// <summary>Mosaic cells across the shorter side; fewer cells means less detail survives.</summary>
@@ -71,6 +105,16 @@ public static class PictureTreatmentPlanner
         var tokens = TaskEvidenceMatcher.Tokenize(string.Join(' ', sources.Where(static s => !string.IsNullOrWhiteSpace(s))));
         tokens.RemoveWhere(static token => token.Length < 3 || token.All(char.IsDigit) || CommonWords.Contains(token));
         return tokens;
+    }
+
+    private static bool Matches(string nearbyText, IReadOnlyCollection<string> taskTokens)
+    {
+        if (nearbyText.Length == 0 || taskTokens.Count == 0)
+        {
+            return false;
+        }
+        var nearby = TaskEvidenceMatcher.Tokenize(nearbyText);
+        return taskTokens.Any(token => nearby.Any(word => SameWord(word, token)));
     }
 
     private static bool SameWord(string left, string right)
@@ -131,6 +175,20 @@ public static class PictureTreatmentPlanner
                 yield return line.Text;
             }
         }
+    }
+
+    private static int SizeBucket(int pixels) => Math.Max(1, pixels / 80);
+
+    private static string Normalize(string value) =>
+        string.Join(' ', value.ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static string Hash(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16];
+
+    private static string Bound(string value, int maximum)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length <= maximum ? trimmed : trimmed[..maximum];
     }
 
     private static readonly HashSet<string> CommonWords = new(StringComparer.OrdinalIgnoreCase)

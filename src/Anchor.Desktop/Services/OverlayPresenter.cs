@@ -53,6 +53,9 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     /// <summary>Composes the activity-specific "where you were" reminder (DeepSeek when configured).</summary>
     public Func<ContextCapsule, CancellationToken, Task<ContextReminder>>? ReminderProvider { get; set; }
     public event EventHandler? CurrentWindowMarkedRelevant;
+
+    /// <summary>Raised when the user presses Done on the goal beacon.</summary>
+    public event EventHandler? StepMarkedDoneFromBeacon;
     public bool EnableVisualFilter { get; set; } = true;
     public bool EnablePointerGuard { get; set; }
     public bool HasRestrictiveOverlay =>
@@ -432,9 +435,13 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
 
     public void ShowBeacon(bool pulse = false)
     {
-        _beacon ??= new GoalBeaconWindow();
+        if (_beacon is null)
+        {
+            _beacon = new GoalBeaconWindow();
+            _beacon.StepMarkedDone += (_, _) => StepMarkedDoneFromBeacon?.Invoke(this, EventArgs.Empty);
+        }
         _beacon.SetGoal(TaskTitle, CurrentSubtask, ProgressLabel, pulse, ReducedMotion);
-        OverlayWindowHelper.Configure(_beacon, 500, 118, clickThrough: true);
+        OverlayWindowHelper.Configure(_beacon, 560, 118, clickThrough: false, noActivate: true);
     }
 
     public void UpdateGoal(string goal, string? currentSubtask, string progressLabel)

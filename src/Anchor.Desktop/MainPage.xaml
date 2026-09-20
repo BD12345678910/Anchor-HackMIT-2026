@@ -277,11 +277,11 @@
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="Camera and gaze" Style="{StaticResource CardTitle}" />
-                                <TextBlock Text="Frames stay on this PC and are turned into gaze coordinates only. No video is stored." Style="{StaticResource Hint}" />
+                                <TextBlock Text="Frames stay on this PC and become gaze coordinates only. Nothing is uploaded, and video is written to disk only while you record." Style="{StaticResource Hint}" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Find cameras" Command="{x:Bind ViewModel.RefreshCamerasCommand}" Style="{StaticResource AccentButtonStyle}" />
-                                    <Button Content="Start gaze test" Command="{x:Bind ViewModel.StartGazeTestCommand}" />
-                                    <Button Content="Stop" Command="{x:Bind ViewModel.StopGazeTestCommand}" />
+                                    <Button Content="Find cameras" Command="{x:Bind ViewModel.RefreshCamerasCommand}" />
+                                    <Button Content="Open webcam" Command="{x:Bind ViewModel.StartGazeTestCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button Content="Close webcam" Command="{x:Bind ViewModel.StopGazeTestCommand}" />
                                 </StackPanel>
                                 <ComboBox Header="Camera" ItemsSource="{x:Bind ViewModel.CameraDevices, Mode=OneWay}"
                                           SelectedItem="{x:Bind ViewModel.SelectedCamera, Mode=TwoWay}"
@@ -289,8 +289,8 @@
                                 <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ViewModel.GazeStatusMessage, Mode=OneWay}" />
                                 <Border Height="240" CornerRadius="12" Background="#FF111722" BorderBrush="#334A5A77" BorderThickness="1">
                                     <Grid>
-                                        <TextBlock Text="Preview appears here while a gaze test runs" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Hint}" />
-                                        <Image Source="{x:Bind ViewModel.GazePreviewSource, Mode=OneWay}" Stretch="UniformToFill" />
+                                        <TextBlock Text="Press Open webcam to see the live camera and the eye crops used for gaze" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Style="{StaticResource Hint}" />
+                                        <Image Source="{x:Bind ViewModel.GazePreviewSource, Mode=OneWay}" Stretch="Uniform" />
                                         <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" Padding="8,5" CornerRadius="8" Background="#CC09101B">
                                             <TextBlock Text="{x:Bind ViewModel.GazeCoordinates, Mode=OneWay}" FontSize="11" />
                                         </Border>
@@ -300,16 +300,28 @@
                                     </Grid>
                                 </Border>
                                 <Border Padding="12" CornerRadius="12" Background="#241C2941">
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="Nine-point calibration" FontWeight="SemiBold" />
-                                            <TextBlock Text="Look at the named screen position, hold still, then capture." Style="{StaticResource Hint}" />
-                                            <TextBlock Text="{x:Bind ViewModel.CalibrationTarget, Mode=OneWay}" FontSize="18" Foreground="#AFC1FF" Margin="0,8,0,0" />
-                                            <TextBlock Text="{x:Bind ViewModel.CalibrationProgressLabel, Mode=OneWay}" FontSize="12" />
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="Record the webcam" FontWeight="SemiBold" />
+                                        <TextBlock Text="Writes an MP4 of exactly what the camera sees, for your own demos." Style="{StaticResource Hint}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Record" Command="{x:Bind ViewModel.StartWebcamRecordingCommand}" />
+                                            <Button Content="Stop recording" Command="{x:Bind ViewModel.StopWebcamRecordingCommand}" />
+                                            <Button Content="Open folder" Command="{x:Bind ViewModel.OpenWebcamRecordingFolderCommand}" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Content="Capture point" VerticalAlignment="Center" Command="{x:Bind ViewModel.CaptureCalibrationPointCommand}" />
-                                    </Grid>
+                                        <TextBox Header="Save to" Text="{x:Bind ViewModel.WebcamRecordingFolder, Mode=TwoWay}" />
+                                        <TextBlock Text="{x:Bind ViewModel.WebcamRecordingStatusText, Mode=OneWay}" Style="{StaticResource Hint}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Padding="12" CornerRadius="12" Background="#241C2941">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="Calibrate by clicking" FontWeight="SemiBold" />
+                                        <TextBlock Text="A dot appears across the screen: look at it and click it. Your eye geometry at the moment of each click is paired with that position, then fitted to your screen." Style="{StaticResource Hint}" TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Calibrate by clicking" Command="{x:Bind ViewModel.CalibrateGazeCommand}" Style="{StaticResource AccentButtonStyle}" />
+                                            <Button Content="Reset calibration" Command="{x:Bind ViewModel.ResetCalibrationCommand}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{x:Bind ViewModel.CalibrationStatus, Mode=OneWay}" Style="{StaticResource Hint}" TextWrapping="Wrap" />
+                                    </StackPanel>
                                 </Border>
                             </StackPanel>
                         </Border>
@@ -368,6 +380,7 @@
                                             <StackPanel><TextBlock Text="Time on task" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.OnTaskShare, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
                                         </Border>
                                     </Grid>
+                                    <TextBlock Text="{x:Bind ViewModel.Analytics.Distractors, Mode=OneWay}" TextWrapping="Wrap" FontWeight="SemiBold" />
                                     <TextBlock Text="{x:Bind ViewModel.Analytics.Triggers, Mode=OneWay}" TextWrapping="Wrap" />
                                     <TextBlock Text="{x:Bind ViewModel.Analytics.Interventions, Mode=OneWay}" TextWrapping="Wrap" />
                                     <TextBlock Text="{x:Bind ViewModel.Analytics.Trend, Mode=OneWay}" TextWrapping="Wrap" Foreground="#AFC1FF" />

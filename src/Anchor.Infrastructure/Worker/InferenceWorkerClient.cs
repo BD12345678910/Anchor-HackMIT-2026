@@ -253,7 +253,7 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             DateTime.UtcNow + _options.RpcDeadline,
             cancellationToken);
         var reply = await call.ResponseAsync;
-        return new GazeStatus(reply.Running, reply.Error);
+        return new GazeStatus(reply.Running, reply.Error, reply.Calibrated);
     }
 
     public async Task<GazeSample> ReadGazeAsync(CancellationToken cancellationToken = default)
@@ -287,7 +287,8 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             reply.Pitch,
             reply.Roll,
             reply.PreviewJpeg.ToByteArray(),
-            unavailableReason);
+            unavailableReason,
+            reply.Calibrated);
     }
 
     public async Task<CalibrationProgress> AddCalibrationSampleAsync(
@@ -305,7 +306,27 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             DateTime.UtcNow + _options.RpcDeadline,
             cancellationToken);
         var reply = await call.ResponseAsync;
-        return new CalibrationProgress(reply.Accepted, checked((int)reply.SampleCount), reply.Error);
+        return new CalibrationProgress(
+            reply.Accepted,
+            checked((int)reply.SampleCount),
+            reply.Error,
+            checked((int)reply.TargetCount));
+    }
+
+    public async Task<CalibrationProgress> ResetCalibrationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new CalibrationProgress(false, 0, "worker unavailable");
+        }
+        var call = _client.ResetCalibrationAsync(
+            new ResetCalibrationRequest(),
+            _headers,
+            DateTime.UtcNow + _options.RpcDeadline,
+            cancellationToken);
+        var reply = await call.ResponseAsync;
+        return new CalibrationProgress(reply.Accepted, 0, reply.Error);
     }
 
     public async Task<CalibrationResult> FinishCalibrationAsync(
@@ -327,6 +348,60 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
             checked((int)reply.SampleCount),
             checked((int)reply.InlierCount),
             reply.MedianError,
+            reply.Error,
+            reply.MeanError,
+            reply.MaxError,
+            checked((int)reply.TargetCount),
+            reply.TargetErrors
+                .Select(entry => new Anchor.Core.Models.CalibrationTargetError(
+                    entry.TargetX,
+                    entry.TargetY,
+                    entry.PredictedX,
+                    entry.PredictedY,
+                    entry.Error))
+                .ToArray());
+    }
+
+    public Task<WebcamRecordingStatus> StartWebcamRecordingAsync(
+        string outputDirectory,
+        CancellationToken cancellationToken = default) =>
+        WebcamRecordingCallAsync(
+            (client, headers, deadline, token) => client.StartWebcamRecordingAsync(
+                new StartWebcamRecordingRequest { OutputDirectory = outputDirectory },
+                headers,
+                deadline,
+                token).ResponseAsync,
+            cancellationToken);
+
+    public Task<WebcamRecordingStatus> GetWebcamRecordingAsync(
+        CancellationToken cancellationToken = default) =>
+        WebcamRecordingCallAsync(
+            (client, headers, deadline, token) => client.GetWebcamRecordingAsync(
+                new GetWebcamRecordingRequest(), headers, deadline, token).ResponseAsync,
+            cancellationToken);
+
+    public Task<WebcamRecordingStatus> StopWebcamRecordingAsync(
+        CancellationToken cancellationToken = default) =>
+        WebcamRecordingCallAsync(
+            (client, headers, deadline, token) => client.StopWebcamRecordingAsync(
+                new StopWebcamRecordingRequest(), headers, deadline, token).ResponseAsync,
+            cancellationToken);
+
+    private async Task<WebcamRecordingStatus> WebcamRecordingCallAsync(
+        Func<InferenceWorker.InferenceWorkerClient, Metadata, DateTime, CancellationToken, Task<WebcamRecordingReply>> call,
+        CancellationToken cancellationToken)
+    {
+        if (_client is null || _headers is null || Mode != WorkerMode.Available)
+        {
+            return new WebcamRecordingStatus(false, false, string.Empty, 0, TimeSpan.Zero, "worker unavailable");
+        }
+        var reply = await call(_client, _headers, DateTime.UtcNow + _options.RpcDeadline, cancellationToken);
+        return new WebcamRecordingStatus(
+            reply.Accepted,
+            reply.Recording,
+            reply.VideoPath,
+            checked((int)reply.FrameCount),
+            TimeSpan.FromSeconds(reply.ElapsedSeconds),
             reply.Error);
     }
 

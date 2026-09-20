@@ -25,7 +25,8 @@ public sealed record GazeSample(
     double Pitch,
     double Roll,
     byte[] PreviewJpeg,
-    string UnavailableReason)
+    string UnavailableReason,
+    bool Calibrated = false)
 {
     public bool Available => X.HasValue && Y.HasValue;
 
@@ -44,14 +45,37 @@ public sealed record GazeSample(
 
 public sealed record CameraDevice(int Index, string Name);
 
-public sealed record GazeStatus(bool Running, string Error);
+public sealed record GazeStatus(bool Running, string Error, bool Calibrated = false);
 
-public sealed record CalibrationProgress(bool Accepted, int SampleCount, string Error);
+public sealed record CalibrationProgress(
+    bool Accepted,
+    int SampleCount,
+    string Error,
+    int TargetCount = 0);
+
+public sealed record CalibrationTargetError(
+    double TargetX,
+    double TargetY,
+    double PredictedX,
+    double PredictedY,
+    double Error);
 
 public sealed record CalibrationResult(
     bool Accepted,
     int SampleCount,
     int InlierCount,
     double MedianError,
+    string Error,
+    double MeanError = 0,
+    double MaxError = 0,
+    int TargetCount = 0,
+    IReadOnlyList<CalibrationTargetError>? TargetErrors = null);
+
+public sealed record WebcamRecordingStatus(
+    bool Accepted,
+    bool Recording,
+    string VideoPath,
+    int FrameCount,
+    TimeSpan Elapsed,
     string Error);
 

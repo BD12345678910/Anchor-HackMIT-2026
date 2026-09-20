@@ -173,7 +173,7 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
             return anchor_pb2.GazeStatusReply()
         try:
             self._gaze.start()
-            return anchor_pb2.GazeStatusReply(running=True)
+            return anchor_pb2.GazeStatusReply(running=True, calibrated=self._gaze.is_calibrated)
         except Exception as error:
             return anchor_pb2.GazeStatusReply(running=False, error=str(error))
 
@@ -189,6 +189,7 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
             "pitch": sample.pitch,
             "roll": sample.roll,
             "preview_jpeg": sample.preview_jpeg,
+            "calibrated": self._gaze.is_calibrated,
         }
         if not sample.available:
             reason = "face not detected" if not sample.face_present else "gaze confidence too low"
@@ -206,9 +207,17 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
             return anchor_pb2.CalibrationProgressReply()
         try:
             count = self._gaze.add_calibration_sample(request.target_x, request.target_y)
-            return anchor_pb2.CalibrationProgressReply(accepted=True, sample_count=count)
+            return anchor_pb2.CalibrationProgressReply(
+                accepted=True,
+                sample_count=count,
+                target_count=self._gaze.calibration_target_count,
+            )
         except (ValueError, RuntimeError) as error:
-            return anchor_pb2.CalibrationProgressReply(accepted=False, error=str(error))
+            return anchor_pb2.CalibrationProgressReply(
+                accepted=False,
+                error=str(error),
+                target_count=self._gaze.calibration_target_count,
+            )
 
     async def FinishCalibration(self, request, context):
         if not await self._authenticate(context):
@@ -220,9 +229,58 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
                 sample_count=model.sample_count,
                 inlier_count=model.inlier_count,
                 median_error=model.median_error,
+                mean_error=model.mean_error,
+                max_error=model.max_error,
+                target_count=model.target_count,
+                target_errors=[
+                    anchor_pb2.CalibrationTargetError(
+                        target_x=entry.target[0],
+                        target_y=entry.target[1],
+                        predicted_x=entry.predicted[0],
+                        predicted_y=entry.predicted[1],
+                        error=entry.error,
+                    )
+                    for entry in model.target_errors
+                ],
             )
-        except (ValueError, RuntimeError) as error:
+        except (ValueError, RuntimeError, IndexError) as error:
             return anchor_pb2.CalibrationResultReply(accepted=False, error=str(error))
+
+    async def ResetCalibration(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.CalibrationProgressReply()
+        self._gaze.reset_calibration()
+        return anchor_pb2.CalibrationProgressReply(accepted=True)
+
+    async def StartWebcamRecording(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.WebcamRecordingReply()
+        try:
+            status = self._gaze.start_webcam_recording(request.output_directory)
+            return self._webcam_message(status, accepted=True)
+        except (ValueError, RuntimeError, OSError) as error:
+            return anchor_pb2.WebcamRecordingReply(accepted=False, error=str(error))
+
+    async def GetWebcamRecording(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.WebcamRecordingReply()
+        return self._webcam_message(self._gaze.webcam_recording_status(), accepted=True)
+
+    async def StopWebcamRecording(self, request, context):
+        if not await self._authenticate(context):
+            return anchor_pb2.WebcamRecordingReply()
+        return self._webcam_message(self._gaze.stop_webcam_recording(), accepted=True)
+
+    @staticmethod
+    def _webcam_message(status, *, accepted: bool):
+        return anchor_pb2.WebcamRecordingReply(
+            accepted=accepted,
+            recording=status.recording,
+            video_path=status.video_path,
+            frame_count=status.frame_count,
+            elapsed_seconds=status.elapsed_seconds,
+            error=status.error,
+        )
 
     async def StopGaze(self, request, context):
         if not await self._authenticate(context):

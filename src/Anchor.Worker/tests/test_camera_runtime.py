@@ -159,6 +159,82 @@ def test_tracker_reports_missing_face_as_unavailable():
     assert sample.y is None
 
 
+class _SequenceDetector:
+    def __init__(self, landmark_sets):
+        self._sets = list(landmark_sets)
+
+    def detect(self, frame):
+        del frame
+        landmarks = self._sets.pop(0) if len(self._sets) > 1 else self._sets[0]
+        return landmarks, 0.0, 0.0, 0.0
+
+    def close(self):
+        return None
+
+
+def test_fixation_sampling_rejects_moving_eyes_and_accepts_steady_ones():
+    moving = CameraGazeTracker(
+        GazeConfiguration(mirror=False, smoothing=0.0),
+        detector=_SequenceDetector(
+            [_face_landmarks(iris_x=x, iris_y=0.5) for x in (0.2, 0.5, 0.8, 0.3)]
+        ),
+    )
+    for step in range(4):
+        moving.process_frame(object(), timestamp_ms=step * 50)
+    try:
+        moving.sample_fixation()
+    except RuntimeError as error:
+        assert "moving" in str(error)
+    else:
+        raise AssertionError("moving eyes must not be accepted as a calibration fixation")
+
+    steady = CameraGazeTracker(
+        GazeConfiguration(mirror=False, smoothing=0.0),
+        detector=_Detector(_face_landmarks(iris_x=0.75, iris_y=0.25)),
+    )
+    steady.process_frame(object(), timestamp_ms=5000)
+    try:
+        steady.sample_fixation()
+    except RuntimeError as error:
+        assert "no steady gaze" in str(error)
+    for step in range(1, 4):
+        steady.process_frame(object(), timestamp_ms=5000 + step * 50)
+
+    features = steady.sample_fixation()
+
+    assert len(features) == 8
+    assert 0.20 <= features[0] <= 0.30
+
+
+def test_calibrated_tracker_maps_raw_features_through_the_fitted_model():
+    from anchor_worker.calibration import CalibrationModel, CalibrationSample
+
+    tracker = CameraGazeTracker(
+        GazeConfiguration(mirror=True, offset_x=0.3, sensitivity=2.0, smoothing=0.0),
+        detector=_Detector(_face_landmarks(iris_x=0.75, iris_y=0.25)),
+    )
+    raw = tracker.process_frame(object(), timestamp_ms=1)
+    features = raw.features
+    # Training points: the observed features map to the screen centre; shifted iris ratios
+    # map elsewhere, so the fit must reproduce the centre for the observed vector.
+    samples = [
+        CalibrationSample(
+            (features[0] + 0.1 * i, features[1] + 0.1 * i, *features[2:]),
+            (0.5 + 0.08 * i, 0.5 - 0.05 * i),
+        )
+        for i in range(-3, 4)
+    ]
+    model = CalibrationModel.fit(samples, "1280x720@100")
+    tracker.set_calibration(model, "1280x720@100")
+
+    calibrated = tracker.process_frame(object(), timestamp_ms=2)
+
+    assert calibrated.available is True
+    assert abs(calibrated.x - 0.5) < 0.05
+    assert abs(calibrated.y - 0.5) < 0.05
+    assert tracker.is_calibrated is True
+
+
 def test_mediapipe_detector_supports_current_tasks_api_without_legacy_solutions(tmp_path):
     model = tmp_path / "face_landmarker.task"
     model.write_bytes(b"model")

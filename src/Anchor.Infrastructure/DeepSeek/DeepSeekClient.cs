@@ -20,14 +20,22 @@ public sealed class DeepSeekClient : ITaskIntelligence
         PropertyNameCaseInsensitive = true
     };
 
+    /// <summary>The only DeepSeek model that accepts image parts; used to look at the pictures themselves.</summary>
+    public const string VisionModel = "deepseek-v4-flash-vision-exp";
+
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
     private readonly string _model;
+    private readonly string _visionModel;
     private readonly Uri _endpoint;
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _retryDelay;
     private readonly ConcurrentDictionary<string, RelevanceJudgment> _relevanceCache =
+        new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (PictureRelevance Verdict, DateTimeOffset ExpiresAt)> _pictureCache =
+        new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (TextRelevance Verdict, DateTimeOffset ExpiresAt)> _textCache =
         new(StringComparer.Ordinal);
 
     public DeepSeekClient(
@@ -37,11 +45,13 @@ public sealed class DeepSeekClient : ITaskIntelligence
         Uri? endpoint = null,
         Func<DateTimeOffset>? clock = null,
         TimeSpan? requestTimeout = null,
-        TimeSpan? retryDelay = null)
+        TimeSpan? retryDelay = null,
+        string? visionModel = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _apiKey = apiKey?.Trim() ?? string.Empty;
         _model = string.IsNullOrWhiteSpace(model) ? "deepseek-flash" : model.Trim();
+        _visionModel = string.IsNullOrWhiteSpace(visionModel) ? VisionModel : visionModel.Trim();
         _endpoint = endpoint ?? DefaultEndpoint;
         if (_endpoint.Scheme != Uri.UriSchemeHttps)
         {
@@ -123,17 +133,19 @@ public sealed class DeepSeekClient : ITaskIntelligence
         var prompt = $$"""
             Return JSON with this exact shape:
             {"score":0.0,"classification":"relevant|ambiguous|likely_detour","reason":"one short sentence"}
-            Judge whether the current context supports the active step or the overall goal. Pages on the same subject
-            (the article being studied, its sections, sub-articles, linked references, a search for it, the same problem
-            site) are relevant even if they do not match the active step word for word; only content clearly unrelated
-            to the goal (entertainment, social feeds, shopping, unrelated topics) is a likely_detour. Prefer
-            "ambiguous" over "likely_detour" when the title alone cannot tell. Do not infer private content not provided.
+            Judge whether what the user is looking at supports the active step or the overall goal. Decide from the
+            on-screen text first, the window title second. Anything on the same subject as the goal (the article being
+            studied, any of its sections or sub-articles, linked references, a search for it, the same problem site,
+            documentation for the same tool) is "relevant" even if it does not match the active step word for word.
+            Only content clearly unrelated to the goal (entertainment, social feeds, shopping, news, unrelated topics)
+            is "likely_detour". Use "ambiguous" when the evidence cannot tell. Do not infer private content not provided.
             Goal: {{Bound(context.Goal, 240)}}
             Active step: {{Bound(context.CurrentSubtask, 240)}}
             Process: {{Bound(context.ProcessName, 120)}}
             Window: {{Bound(context.WindowTitle, 240)}}
             Domain: {{Bound(context.Domain, 240)}}
             User-approved targets: {{string.Join(", ", context.UserRelevantTargets.Select(item => Bound(item, 120)))}}
+            On-screen text (OCR, may be noisy): {{(string.IsNullOrWhiteSpace(context.ScreenExcerpt) ? "(not yet read)" : Bound(context.ScreenExcerpt, 900))}}
             """;
         var response = await CompleteAsync(prompt, cancellationToken);
         RelevanceJudgment judgment;
@@ -162,6 +174,258 @@ public sealed class DeepSeekClient : ITaskIntelligence
 
         _relevanceCache[key] = judgment;
         return judgment;
+    }
+
+    public async Task<PictureGrading> GradePicturesAsync(
+        PictureGradingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var now = _clock();
+        var pageKey = CreatePageKey(request);
+        var verdicts = new Dictionary<string, PictureRelevance>(StringComparer.Ordinal);
+        var missing = new List<PictureDescriptor>();
+        foreach (var picture in request.Pictures.DistinctBy(static p => p.Key, StringComparer.Ordinal))
+        {
+            if (_pictureCache.TryGetValue(pageKey + '|' + picture.Key, out var cached) && cached.ExpiresAt > now)
+            {
+                verdicts[picture.Key] = cached.Verdict;
+            }
+            else
+            {
+                missing.Add(picture);
+            }
+        }
+        if (missing.Count == 0)
+        {
+            return new PictureGrading(verdicts, "DeepSeek", false);
+        }
+
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            return Merge(verdicts, PictureTreatmentPlanner.LocalGrade(request with { Pictures = missing }), "Local rules · DeepSeek is not configured");
+        }
+
+        var listing = string.Join('\n', missing.Select((picture, index) =>
+            $"{index + 1}. size {picture.Width}x{picture.Height}px{(picture.AdShaped ? " (banner/rail shaped)" : string.Empty)}; " +
+            $"text next to it: {(picture.NearbyText.Length == 0 ? "(no caption)" : '"' + Bound(picture.NearbyText, PictureTreatmentPlanner.MaxNearbyChars) + '"')}"));
+        var withPixels = missing.Where(static p => !string.IsNullOrEmpty(p.ThumbnailDataUrl)).ToList();
+        var prompt = $$"""
+            Return JSON with this exact shape:
+            {"pictures":[{"index":1,"verdict":"illustrates|unrelated|bait"}]}
+            The user studies with a tool that lowers the resolution of distracting pictures. For each picture on the
+            page decide: "illustrates" when it depicts or supports the subject the user is working on (judge by what
+            the picture shows when an image is attached, then by the caption/adjacent text and the page text; a
+            picture with no caption on a page about the subject is "illustrates"), "unrelated" when it shows or is
+            about something else, "bait" when it is an advert, promo, recommendation, thumbnail feed or other attention
+            bait. When the picture shows the same subject as the goal (for example any cat picture when the goal is
+            about cats), it is always "illustrates". Give one entry per index.
+            Goal: {{Bound(request.Goal, 240)}}
+            Active step: {{Bound(request.CurrentSubtask, 240)}}
+            Process: {{Bound(request.ProcessName, 120)}}
+            Window: {{Bound(request.WindowTitle, 240)}}
+            Page text (OCR, may be noisy): {{(string.IsNullOrWhiteSpace(request.ScreenExcerpt) ? "(not read)" : Bound(request.ScreenExcerpt, 900))}}
+            Pictures{{(withPixels.Count > 0 ? " (each attached image is labelled with its index)" : string.Empty)}}:
+            {{listing}}
+            """;
+
+        CompletionResult response;
+        var source = "DeepSeek";
+        if (withPixels.Count > 0)
+        {
+            // Vision grading: the pictures themselves, downsampled, with their index labels.
+            var parts = new List<object> { new { type = "text", text = prompt } };
+            foreach (var picture in withPixels)
+            {
+                parts.Add(new { type = "text", text = $"Picture {missing.IndexOf(picture) + 1}:" });
+                parts.Add(new { type = "image_url", image_url = new { url = picture.ThumbnailDataUrl, detail = "low" } });
+            }
+            response = await CompleteAsync(_visionModel, parts, jsonMode: false, cancellationToken);
+            source = "DeepSeek vision";
+            if (response.ErrorCode is not null)
+            {
+                // Vision model unavailable: fall back to caption/page-text grading before local rules.
+                response = await CompleteAsync(prompt, cancellationToken);
+                source = $"DeepSeek text (vision {response.ErrorCode ?? "unavailable"})";
+            }
+        }
+        else
+        {
+            response = await CompleteAsync(prompt, cancellationToken);
+        }
+        if (response.ErrorCode is not null)
+        {
+            return Merge(verdicts, PictureTreatmentPlanner.LocalGrade(request with { Pictures = missing }), $"Local rules · DeepSeek {response.ErrorCode}");
+        }
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<PicturesDto>(ExtractJsonObject(response.Content!), JsonOptions)
+                ?? throw new JsonException("Missing pictures object.");
+            var graded = new Dictionary<string, PictureRelevance>(StringComparer.Ordinal);
+            foreach (var entry in dto.Pictures ?? [])
+            {
+                if (entry.Index < 1 || entry.Index > missing.Count)
+                {
+                    continue;
+                }
+                graded[missing[entry.Index - 1].Key] = ParsePictureVerdict(entry.Verdict);
+            }
+            if (graded.Count == 0)
+            {
+                throw new JsonException("No picture verdicts.");
+            }
+            foreach (var (key, verdict) in graded)
+            {
+                _pictureCache[pageKey + '|' + key] = (verdict, now.AddMinutes(10));
+                verdicts[key] = verdict;
+            }
+            foreach (var picture in missing.Where(p => !graded.ContainsKey(p.Key)))
+            {
+                verdicts[picture.Key] = PictureRelevance.Illustrates;
+            }
+            return new PictureGrading(verdicts, source, false);
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException)
+        {
+            return Merge(verdicts, PictureTreatmentPlanner.LocalGrade(request with { Pictures = missing }), "Local rules · DeepSeek invalid_deepseek_json");
+        }
+    }
+
+    public async Task<TextGrading> GradeTextBlocksAsync(
+        TextGradingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var now = _clock();
+        var pageKey = CreatePageKey(request.Goal, request.CurrentSubtask, request.ProcessName, request.WindowTitle);
+        var verdicts = new Dictionary<string, TextRelevance>(StringComparer.Ordinal);
+        var missing = new List<TextBlockDescriptor>();
+        foreach (var block in request.Blocks.DistinctBy(static b => b.Key, StringComparer.Ordinal))
+        {
+            if (_textCache.TryGetValue(pageKey + '|' + block.Key, out var cached) && cached.ExpiresAt > now)
+            {
+                verdicts[block.Key] = cached.Verdict;
+            }
+            else
+            {
+                missing.Add(block);
+            }
+        }
+        if (missing.Count == 0)
+        {
+            return new TextGrading(verdicts, "DeepSeek", false);
+        }
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            return MergeText(verdicts, TextBlockPlanner.LocalGrade(request with { Blocks = missing }), "Local rules · DeepSeek is not configured");
+        }
+
+        var listing = string.Join('\n', missing.Select((block, index) => $"{index + 1}. \"{Bound(block.Text, 320)}\""));
+        var prompt = $$"""
+            Return JSON with this exact shape:
+            {"blocks":[{"index":1,"verdict":"on_task|off_task"}]}
+            The user studies with a tool that dims on-screen passages that are not part of what they are working on.
+            For each passage (OCR of one paragraph, list, card or navigation block) decide: "on_task" when it is part
+            of the material for the goal or active step (the article body, its headings, code, problem statements,
+            figures' captions, the tool's own UI needed to work), "off_task" when it is navigation to other topics,
+            "related/recommended/trending" lists, comments, adverts, promos, cookie/login banners, or content about
+            another subject. Passages on the same subject as the goal are always "on_task". Give one entry per index.
+            Goal: {{Bound(request.Goal, 240)}}
+            Active step: {{Bound(request.CurrentSubtask, 240)}}
+            Process: {{Bound(request.ProcessName, 120)}}
+            Window: {{Bound(request.WindowTitle, 240)}}
+            Passages:
+            {{listing}}
+            """;
+        var response = await CompleteAsync(prompt, cancellationToken);
+        if (response.ErrorCode is not null)
+        {
+            return MergeText(verdicts, TextBlockPlanner.LocalGrade(request with { Blocks = missing }), $"Local rules · DeepSeek {response.ErrorCode}");
+        }
+        try
+        {
+            var dto = JsonSerializer.Deserialize<BlocksDto>(response.Content!, JsonOptions)
+                ?? throw new JsonException("Missing blocks object.");
+            var graded = new Dictionary<string, TextRelevance>(StringComparer.Ordinal);
+            foreach (var entry in dto.Blocks ?? [])
+            {
+                if (entry.Index < 1 || entry.Index > missing.Count)
+                {
+                    continue;
+                }
+                graded[missing[entry.Index - 1].Key] = entry.Verdict?.Trim().ToLowerInvariant() switch
+                {
+                    "on_task" => TextRelevance.OnTask,
+                    "off_task" => TextRelevance.OffTask,
+                    _ => throw new JsonException("Unknown passage verdict.")
+                };
+            }
+            if (graded.Count == 0)
+            {
+                throw new JsonException("No passage verdicts.");
+            }
+            foreach (var (key, verdict) in graded)
+            {
+                _textCache[pageKey + '|' + key] = (verdict, now.AddMinutes(10));
+                verdicts[key] = verdict;
+            }
+            foreach (var block in missing.Where(b => !graded.ContainsKey(b.Key)))
+            {
+                verdicts[block.Key] = TextRelevance.OnTask;
+            }
+            return new TextGrading(verdicts, "DeepSeek", false);
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException)
+        {
+            return MergeText(verdicts, TextBlockPlanner.LocalGrade(request with { Blocks = missing }), "Local rules · DeepSeek invalid_deepseek_json");
+        }
+    }
+
+    private static TextGrading MergeText(Dictionary<string, TextRelevance> cached, TextGrading local, string source)
+    {
+        foreach (var (key, verdict) in local.Verdicts)
+        {
+            cached[key] = verdict;
+        }
+        return new TextGrading(cached, source, true);
+    }
+
+    /// <summary>Vision replies are not JSON-mode constrained; take the outermost object if the model wrapped it in prose or a code fence.</summary>
+    private static string ExtractJsonObject(string content)
+    {
+        var start = content.IndexOf('{');
+        var end = content.LastIndexOf('}');
+        return start >= 0 && end > start ? content[start..(end + 1)] : content;
+    }
+
+    private static PictureGrading Merge(Dictionary<string, PictureRelevance> cached, PictureGrading local, string source)
+    {
+        foreach (var (key, verdict) in local.Verdicts)
+        {
+            cached[key] = verdict;
+        }
+        return new PictureGrading(cached, source, true);
+    }
+
+    private static PictureRelevance ParsePictureVerdict(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "illustrates" => PictureRelevance.Illustrates,
+            "unrelated" => PictureRelevance.Unrelated,
+            "bait" => PictureRelevance.Bait,
+            _ => throw new JsonException("Unknown picture verdict.")
+        };
+
+    private static string CreatePageKey(PictureGradingRequest request) =>
+        CreatePageKey(request.Goal, request.CurrentSubtask, request.ProcessName, request.WindowTitle);
+
+    private static string CreatePageKey(string goal, string subtask, string process, string? title)
+    {
+        static string Normalize(string? value) =>
+            string.Join(' ', (value ?? string.Empty).Trim().ToLowerInvariant()
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return string.Join('|', Normalize(goal), Normalize(subtask), Normalize(process), Normalize(title));
     }
 
     public async Task<TaskStep> BreakDownStepAsync(
@@ -332,27 +596,39 @@ public sealed class DeepSeekClient : ITaskIntelligence
         }
     }
 
-    private async Task<CompletionResult> CompleteAsync(
+    private Task<CompletionResult> CompleteAsync(
         string prompt,
+        CancellationToken cancellationToken) =>
+        CompleteAsync(_model, prompt, jsonMode: true, cancellationToken);
+
+    /// <param name="userContent">Either a prompt string or an array of OpenAI-style content parts (text + image_url).</param>
+    private async Task<CompletionResult> CompleteAsync(
+        string model,
+        object userContent,
+        bool jsonMode,
         CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < 2; attempt++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, _endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-            request.Content = JsonContent.Create(new
+            var body = new Dictionary<string, object>
             {
-                model = _model,
-                messages = new object[]
+                ["model"] = model,
+                ["messages"] = new object[]
                 {
                     new { role = "system", content = "Return valid JSON only and follow the requested shape." },
-                    new { role = "user", content = prompt }
+                    new { role = "user", content = userContent }
                 },
-                response_format = new { type = "json_object" },
-                thinking = new { type = "disabled" },
-                stream = false,
-                temperature = 0.1
-            });
+                ["thinking"] = new { type = "disabled" },
+                ["stream"] = false,
+                ["temperature"] = 0.1
+            };
+            if (jsonMode)
+            {
+                body["response_format"] = new { type = "json_object" };
+            }
+            request.Content = JsonContent.Create(body);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(_requestTimeout);
@@ -432,15 +708,13 @@ public sealed class DeepSeekClient : ITaskIntelligence
         var localScore = TaskRelevanceScorer.Score(
             $"{context.Goal} {context.CurrentSubtask}",
             context.ProcessName,
-            $"{context.WindowTitle} {context.Domain}");
+            $"{context.WindowTitle} {context.Domain} {context.ScreenExcerpt}");
+        // Title/vocabulary rules cannot understand a page; without DeepSeek they may confirm
+        // relevance but never declare a detour on their own.
         return new RelevanceJudgment(
-            localScore,
-            localScore >= 0.65
-                ? RelevanceClass.Relevant
-                : localScore < 0.35
-                    ? RelevanceClass.LikelyDetour
-                    : RelevanceClass.Ambiguous,
-            $"Local fallback: {reason}",
+            Math.Max(localScore, 0.5),
+            localScore >= 0.65 ? RelevanceClass.Relevant : RelevanceClass.Ambiguous,
+            $"Local rules only · DeepSeek {reason}",
             true,
             now.AddSeconds(30));
     }
@@ -466,6 +740,7 @@ public sealed class DeepSeekClient : ITaskIntelligence
             Normalize(context.ProcessName),
             Normalize(context.WindowTitle),
             Normalize(context.Domain),
+            string.IsNullOrWhiteSpace(context.ScreenExcerpt) ? "no-text" : "text",
             string.Join(',', context.UserRelevantTargets.Select(Normalize).Order(StringComparer.Ordinal)));
     }
 
@@ -485,6 +760,10 @@ public sealed class DeepSeekClient : ITaskIntelligence
     private sealed record PlanDto(string? Goal, IReadOnlyList<StepDto>? Steps);
     private sealed record StepDto(string? Id, string? Title, string? CompletionCriterion);
     private sealed record RelevanceDto(double Score, string? Classification, string? Reason);
+    private sealed record PicturesDto(IReadOnlyList<PictureVerdictDto>? Pictures);
+    private sealed record PictureVerdictDto(int Index, string? Verdict);
+    private sealed record BlocksDto(IReadOnlyList<BlockVerdictDto>? Blocks);
+    private sealed record BlockVerdictDto(int Index, string? Verdict);
     private sealed record ProgressDto(bool StepCompleted, double Confidence, string? Evidence);
     private sealed record ReminderDto(string? Headline, string? WhereYouWere, string? ResumeWith);
 }

@@ -11,6 +11,11 @@ public sealed partial class GoalBeaconWindow : Window
         InitializeComponent();
     }
 
+    /// <summary>Raised when the user presses Done on the beacon to tick the current step.</summary>
+    public event EventHandler? StepMarkedDone;
+
+    private void DoneButton_Click(object sender, RoutedEventArgs e) => StepMarkedDone?.Invoke(this, EventArgs.Empty);
+
     public void SetGoal(
         string goal,
         string currentSubtask,
@@ -21,6 +26,9 @@ public sealed partial class GoalBeaconWindow : Window
         GoalText.Text = goal;
         SubtaskText.Text = currentSubtask;
         ProgressText.Text = progressLabel;
+        DoneButton.Visibility = string.Equals(currentSubtask, "Task complete", StringComparison.Ordinal)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         if (!emphasize)
         {
             BeaconCard.Opacity = 0.92;

@@ -31,11 +31,32 @@ def test_calibration_fits_mapping_and_rejects_single_outlier():
     assert predicted[1] == pytest.approx(0.7125, abs=0.015)
 
 
-def test_calibration_requires_nine_samples():
-    samples = [CalibrationSample((0.5, 0.5, 0.0, 0.0), (0.5, 0.5))] * 8
+def test_calibration_requires_five_distinct_targets():
+    same_target = [CalibrationSample((0.5, 0.5, 0.0, 0.0), (0.5, 0.5))] * 8
+    four_targets = [
+        CalibrationSample((x, y, 0.0, 0.0), (x, y))
+        for x, y in ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0))
+    ]
 
-    with pytest.raises(ValueError, match="nine"):
-        CalibrationModel.fit(samples, display_signature="1920x1080@100")
+    with pytest.raises(ValueError, match="distinct"):
+        CalibrationModel.fit(same_target, display_signature="1920x1080@100")
+    with pytest.raises(ValueError, match="distinct"):
+        CalibrationModel.fit(four_targets, display_signature="1920x1080@100")
+
+
+def test_calibration_reports_per_target_errors():
+    samples = [
+        CalibrationSample((x, y, 0.0, 0.0), (x, y))
+        for x, y in ((0.0, 0.0), (1.0, 0.0), (0.5, 0.5), (0.0, 1.0), (1.0, 1.0))
+        for _ in range(3)
+    ]
+
+    model = CalibrationModel.fit(samples, display_signature="1920x1080@100")
+
+    assert model.target_count == 5
+    assert len(model.target_errors) == 5
+    assert model.max_error < 0.02
+    assert all(entry.error < 0.02 for entry in model.target_errors)
 
 
 def test_calibration_is_invalidated_when_display_geometry_changes():

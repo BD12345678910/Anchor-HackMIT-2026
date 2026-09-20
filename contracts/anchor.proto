@@ -13,7 +13,11 @@ service InferenceWorker {
   rpc ReadGaze(ReadGazeRequest) returns (GazeSampleReply);
   rpc AddCalibrationSample(AddCalibrationSampleRequest) returns (CalibrationProgressReply);
   rpc FinishCalibration(FinishCalibrationRequest) returns (CalibrationResultReply);
+  rpc ResetCalibration(ResetCalibrationRequest) returns (CalibrationProgressReply);
   rpc StopGaze(StopGazeRequest) returns (GazeStatusReply);
+  rpc StartWebcamRecording(StartWebcamRecordingRequest) returns (WebcamRecordingReply);
+  rpc GetWebcamRecording(GetWebcamRecordingRequest) returns (WebcamRecordingReply);
+  rpc StopWebcamRecording(StopWebcamRecordingRequest) returns (WebcamRecordingReply);
   rpc StartRecording(StartRecordingRequest) returns (RecordingManifestReply);
   rpc AppendRecordingEvent(AppendRecordingEventRequest) returns (RecordingStatusReply);
   rpc AppendRecordingSample(AppendRecordingSampleRequest) returns (RecordingStatusReply);
@@ -133,6 +137,7 @@ message StopGazeRequest {}
 message GazeStatusReply {
   bool running = 1;
   string error = 2;
+  bool calibrated = 3;
 }
 
 message ReadGazeRequest {}
@@ -154,6 +159,7 @@ message GazeSampleReply {
   double pitch = 7;
   double roll = 8;
   bytes preview_jpeg = 9;
+  bool calibrated = 10;
 }
 
 message AddCalibrationSampleRequest {
@@ -165,10 +171,21 @@ message CalibrationProgressReply {
   bool accepted = 1;
   uint32 sample_count = 2;
   string error = 3;
+  uint32 target_count = 4;
 }
 
 message FinishCalibrationRequest {
   string display_signature = 1;
+}
+
+message ResetCalibrationRequest {}
+
+message CalibrationTargetError {
+  double target_x = 1;
+  double target_y = 2;
+  double predicted_x = 3;
+  double predicted_y = 4;
+  double error = 5;
 }
 
 message CalibrationResultReply {
@@ -177,6 +194,25 @@ message CalibrationResultReply {
   uint32 inlier_count = 3;
   double median_error = 4;
   string error = 5;
+  double mean_error = 6;
+  double max_error = 7;
+  uint32 target_count = 8;
+  repeated CalibrationTargetError target_errors = 9;
+}
+
+message StartWebcamRecordingRequest {
+  string output_directory = 1;
+}
+message GetWebcamRecordingRequest {}
+message StopWebcamRecordingRequest {}
+
+message WebcamRecordingReply {
+  bool accepted = 1;
+  bool recording = 2;
+  string video_path = 3;
+  uint32 frame_count = 4;
+  double elapsed_seconds = 5;
+  string error = 6;
 }
 
 message StartRecordingRequest {

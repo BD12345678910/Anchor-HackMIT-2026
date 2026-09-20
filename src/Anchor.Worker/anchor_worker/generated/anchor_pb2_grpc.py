@@ -59,10 +59,30 @@ class InferenceWorkerStub(object):
                 request_serializer=anchor__pb2.FinishCalibrationRequest.SerializeToString,
                 response_deserializer=anchor__pb2.CalibrationResultReply.FromString,
                 )
+        self.ResetCalibration = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/ResetCalibration',
+                request_serializer=anchor__pb2.ResetCalibrationRequest.SerializeToString,
+                response_deserializer=anchor__pb2.CalibrationProgressReply.FromString,
+                )
         self.StopGaze = channel.unary_unary(
                 '/anchor.v1.InferenceWorker/StopGaze',
                 request_serializer=anchor__pb2.StopGazeRequest.SerializeToString,
                 response_deserializer=anchor__pb2.GazeStatusReply.FromString,
+                )
+        self.StartWebcamRecording = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/StartWebcamRecording',
+                request_serializer=anchor__pb2.StartWebcamRecordingRequest.SerializeToString,
+                response_deserializer=anchor__pb2.WebcamRecordingReply.FromString,
+                )
+        self.GetWebcamRecording = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/GetWebcamRecording',
+                request_serializer=anchor__pb2.GetWebcamRecordingRequest.SerializeToString,
+                response_deserializer=anchor__pb2.WebcamRecordingReply.FromString,
+                )
+        self.StopWebcamRecording = channel.unary_unary(
+                '/anchor.v1.InferenceWorker/StopWebcamRecording',
+                request_serializer=anchor__pb2.StopWebcamRecordingRequest.SerializeToString,
+                response_deserializer=anchor__pb2.WebcamRecordingReply.FromString,
                 )
         self.StartRecording = channel.unary_unary(
                 '/anchor.v1.InferenceWorker/StartRecording',
@@ -153,7 +173,31 @@ class InferenceWorkerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ResetCalibration(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def StopGaze(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartWebcamRecording(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetWebcamRecording(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopWebcamRecording(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -243,10 +287,30 @@ def add_InferenceWorkerServicer_to_server(servicer, server):
                     request_deserializer=anchor__pb2.FinishCalibrationRequest.FromString,
                     response_serializer=anchor__pb2.CalibrationResultReply.SerializeToString,
             ),
+            'ResetCalibration': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResetCalibration,
+                    request_deserializer=anchor__pb2.ResetCalibrationRequest.FromString,
+                    response_serializer=anchor__pb2.CalibrationProgressReply.SerializeToString,
+            ),
             'StopGaze': grpc.unary_unary_rpc_method_handler(
                     servicer.StopGaze,
                     request_deserializer=anchor__pb2.StopGazeRequest.FromString,
                     response_serializer=anchor__pb2.GazeStatusReply.SerializeToString,
+            ),
+            'StartWebcamRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartWebcamRecording,
+                    request_deserializer=anchor__pb2.StartWebcamRecordingRequest.FromString,
+                    response_serializer=anchor__pb2.WebcamRecordingReply.SerializeToString,
+            ),
+            'GetWebcamRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetWebcamRecording,
+                    request_deserializer=anchor__pb2.GetWebcamRecordingRequest.FromString,
+                    response_serializer=anchor__pb2.WebcamRecordingReply.SerializeToString,
+            ),
+            'StopWebcamRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopWebcamRecording,
+                    request_deserializer=anchor__pb2.StopWebcamRecordingRequest.FromString,
+                    response_serializer=anchor__pb2.WebcamRecordingReply.SerializeToString,
             ),
             'StartRecording': grpc.unary_unary_rpc_method_handler(
                     servicer.StartRecording,
@@ -442,6 +506,23 @@ class InferenceWorker(object):
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
+    def ResetCalibration(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/ResetCalibration',
+            anchor__pb2.ResetCalibrationRequest.SerializeToString,
+            anchor__pb2.CalibrationProgressReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
     def StopGaze(request,
             target,
             options=(),
@@ -455,6 +536,57 @@ class InferenceWorker(object):
         return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/StopGaze',
             anchor__pb2.StopGazeRequest.SerializeToString,
             anchor__pb2.GazeStatusReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StartWebcamRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/StartWebcamRecording',
+            anchor__pb2.StartWebcamRecordingRequest.SerializeToString,
+            anchor__pb2.WebcamRecordingReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetWebcamRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/GetWebcamRecording',
+            anchor__pb2.GetWebcamRecordingRequest.SerializeToString,
+            anchor__pb2.WebcamRecordingReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StopWebcamRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/anchor.v1.InferenceWorker/StopWebcamRecording',
+            anchor__pb2.StopWebcamRecordingRequest.SerializeToString,
+            anchor__pb2.WebcamRecordingReply.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

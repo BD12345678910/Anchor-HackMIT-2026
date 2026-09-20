@@ -15,7 +15,7 @@ internal static class OverlayWindowHelper
     private const uint LwaAlpha = 0x00000002;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
-    public static void Configure(Window window, int width, int height, bool clickThrough = false, bool fullScreen = false)
+    public static void Configure(Window window, int width, int height, bool clickThrough = false, bool fullScreen = false, bool noActivate = false)
     {
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
@@ -28,10 +28,11 @@ internal static class OverlayWindowHelper
                 workArea.Y + 24,
                 width,
                 height);
-        ConfigureBounds(window, bounds, clickThrough);
+        ConfigureBounds(window, bounds, clickThrough, noActivate);
     }
 
-    public static void ConfigureBounds(Window window, RectInt32 bounds, bool clickThrough)
+    /// <param name="noActivate">Keeps the window clickable but never lets it steal focus from the user's work.</param>
+    public static void ConfigureBounds(Window window, RectInt32 bounds, bool clickThrough, bool noActivate = false)
     {
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
@@ -43,6 +44,12 @@ internal static class OverlayWindowHelper
         {
             var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
             SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style | WsExTransparent | WsExToolWindow | WsExNoActivate));
+            appWindow.Show(activateWindow: false);
+        }
+        else if (noActivate)
+        {
+            var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+            SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style | WsExToolWindow | WsExNoActivate));
             appWindow.Show(activateWindow: false);
         }
     }

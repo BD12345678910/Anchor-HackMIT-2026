@@ -64,8 +64,22 @@ public sealed class InferenceEngineAdapter : IInferenceEngine, IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.FinishCalibrationAsync(displaySignature, cancellationToken);
 
+    public Task<CalibrationProgress> ResetCalibrationAsync(CancellationToken cancellationToken = default) =>
+        _client.ResetCalibrationAsync(cancellationToken);
+
     public Task<GazeStatus> StopGazeAsync(CancellationToken cancellationToken = default) =>
         _client.StopGazeAsync(cancellationToken);
+
+    public Task<WebcamRecordingStatus> StartWebcamRecordingAsync(
+        string outputDirectory,
+        CancellationToken cancellationToken = default) =>
+        _client.StartWebcamRecordingAsync(outputDirectory, cancellationToken);
+
+    public Task<WebcamRecordingStatus> GetWebcamRecordingAsync(CancellationToken cancellationToken = default) =>
+        _client.GetWebcamRecordingAsync(cancellationToken);
+
+    public Task<WebcamRecordingStatus> StopWebcamRecordingAsync(CancellationToken cancellationToken = default) =>
+        _client.StopWebcamRecordingAsync(cancellationToken);
 
     public Task<(StudyRecordingManifest? Manifest, string? Error)> StartRecordingAsync(
         string outputDirectory,
