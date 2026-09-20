@@ -169,9 +169,7 @@ public sealed class SessionOrchestrator
             if (decision.Kind == InterventionKind.RecoveryCard)
             {
                 capsule = _capsules!.FreezeOrEstimate(
-                    prediction.ReasonCodes.Contains("manual_report", StringComparer.Ordinal)
-                        ? DistractionReason.ManualReport
-                        : DistractionReason.IdleReturn,
+                    ResolveReason(prediction.ReasonCodes),
                     _currentSubtask,
                     _plannedNextAction);
             }
@@ -189,6 +187,23 @@ public sealed class SessionOrchestrator
         }
 
         return prediction;
+    }
+
+    private static DistractionReason ResolveReason(IReadOnlyList<string> reasonCodes)
+    {
+        if (reasonCodes.Contains("manual_report", StringComparer.Ordinal))
+        {
+            return DistractionReason.ManualReport;
+        }
+
+        if (reasonCodes.Contains("gibberish_typing", StringComparer.Ordinal))
+        {
+            return DistractionReason.GibberishTyping;
+        }
+
+        return reasonCodes.Contains("scroll_thrash", StringComparer.Ordinal)
+            ? DistractionReason.ScrollBurst
+            : DistractionReason.IdleReturn;
     }
 
     public Task<AttentionPrediction> ReportDistractedAsync(CancellationToken cancellationToken = default) =>

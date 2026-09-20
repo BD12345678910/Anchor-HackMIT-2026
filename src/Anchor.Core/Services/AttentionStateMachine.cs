@@ -8,6 +8,7 @@ public sealed class AttentionStateMachine
     private int _highDistractionWindows;
     private int _focusedWindows;
     private int _stuckWindows;
+    private int _scrollThrashWindows;
 
     private AttentionStateMachine()
     {
@@ -44,6 +45,26 @@ public sealed class AttentionStateMachine
         {
             reasons.Add("worker_unavailable");
         }
+
+        // Flicking through a document is its own kind of lost: the right file is in front, but
+        // nothing is being read. It is reported separately from an off-task window so the recovery
+        // card can name the page the user left behind.
+        if (window.ScrollThrashSustained && window.IdleSeconds < 5)
+        {
+            _scrollThrashWindows++;
+            _highDistractionWindows = 0;
+            _focusedWindows = 0;
+            _stuckWindows = 0;
+            reasons.Add("scroll_thrash");
+            State = _scrollThrashWindows >= 2 ? AttentionState.Stuck : AttentionState.Drifting;
+            return AttentionPrediction.Create(
+                State,
+                _scrollThrashWindows >= 2 ? 0.86 : 0.64,
+                temporal.FiveSecond,
+                reasons);
+        }
+
+        _scrollThrashWindows = 0;
 
         if (window.AppRelevance >= 0.55
             && window.ScrollReversalCount >= 8
@@ -110,8 +131,12 @@ public sealed class AttentionStateMachine
             reasons.Add("off_task_window");
         }
 
-        evidence += Math.Clamp(window.IdleSeconds / 15, 0, 1) * 0.16;
-        if (window.IdleSeconds >= 5)
+        // Writing and coding happen in the head as much as on the keyboard: a still mouse and a
+        // quiet keyboard are how thinking looks, so those activities get a much longer grace
+        // period before stillness counts as evidence of anything.
+        var idleBeyondThinking = Math.Max(0, window.IdleSeconds - ThinkingTolerance(window.Activity));
+        evidence += Math.Clamp(idleBeyondThinking / 15, 0, 1) * 0.16;
+        if (idleBeyondThinking >= 5)
         {
             reasons.Add("idle_pause");
         }
@@ -140,13 +165,20 @@ public sealed class AttentionStateMachine
             reasons.Add("gaze_away_sustained");
         }
 
-        if (window.NoProgressSustained)
+        if (window.NoProgressSustained && !IsComposing(window.Activity))
         {
             evidence += 0.12;
             reasons.Add("no_progress_sustained");
         }
 
-        if (window.KeyCount > 0 && window.AppRelevance >= 0.5)
+        // Text arriving with no words in it is the opposite of thinking: keyboard mashing, a held
+        // key, or typing into the wrong place entirely.
+        if (window.GibberishTyping)
+        {
+            evidence += 0.3;
+            reasons.Add("gibberish_typing");
+        }
+        else if (window.KeyCount > 0 && window.AppRelevance >= 0.5)
         {
             evidence -= Math.Clamp(window.KeyCount / 10d, 0, 1) * 0.08;
         }
@@ -154,10 +186,23 @@ public sealed class AttentionStateMachine
         return Math.Clamp(evidence, 0, 1);
     }
 
+    /// <summary>Seconds of stillness that mean nothing for this kind of work.</summary>
+    public static double ThinkingTolerance(ActivityKind activity) => activity switch
+    {
+        ActivityKind.Coding or ActivityKind.Writing or ActivityKind.ProblemSolving => 30,
+        ActivityKind.Reading => 8,
+        ActivityKind.Watching => 20,
+        _ => 0
+    };
+
+    private static bool IsComposing(ActivityKind activity) =>
+        activity is ActivityKind.Coding or ActivityKind.Writing or ActivityKind.ProblemSolving;
+
     private void ResetCounters()
     {
         _highDistractionWindows = 0;
         _focusedWindows = 0;
         _stuckWindows = 0;
+        _scrollThrashWindows = 0;
     }
 }

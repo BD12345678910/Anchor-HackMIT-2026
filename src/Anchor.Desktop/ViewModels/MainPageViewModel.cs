@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
 using Windows.Storage.Pickers;
+using ActivityKind = Anchor.Core.Models.ActivityKind;
 
 namespace Anchor_Desktop.ViewModels;
 
@@ -100,6 +101,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private string? _plannedGoal;
     private string? _lastEvidenceTitle;
     private bool _loadingPreferences;
+    /// <summary>Below this many keys in a window there is not enough text to call it mashing.</summary>
+    private const int TypedTextKeyCount = 8;
+
+    private string? _lastTypedLine;
     private ScreenSnapshot? _lastScreen;
     private DateTimeOffset _lastScreenRead = DateTimeOffset.MinValue;
     private string? _lastScreenIdentity;
@@ -163,6 +168,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial bool BlurImagesEnabled { get; set; } = true;
     [ObservableProperty] public partial bool HideFutureTextEnabled { get; set; } = true;
     [ObservableProperty] public partial bool SuppressAnimationsEnabled { get; set; }
+    [ObservableProperty] public partial bool RemovePageClutterEnabled { get; set; }
+    [ObservableProperty] public partial bool SimplifyPageTextEnabled { get; set; }
     [ObservableProperty] public partial bool AudioShieldEnabled { get; set; }
     [ObservableProperty] public partial bool PointerGuardEnabled { get; set; }
     [ObservableProperty] public partial bool IsPlanReady { get; set; }
@@ -220,6 +227,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     partial void OnBlurImagesEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnHideFutureTextEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnSuppressAnimationsEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnRemovePageClutterEnabledChanged(bool value) => ToolPreferenceChanged();
+    partial void OnSimplifyPageTextEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnPointerGuardEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnGazeSpotlightEnabledChanged(bool value) => ToolPreferenceChanged();
     partial void OnWindowFirewallEnabledChanged(bool value) => ToolPreferenceChanged();
@@ -255,7 +264,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 PointerGuardEnabled,
                 GazeSpotlightEnabled,
                 WindowFirewallEnabled,
-                ReducedMotion));
+                ReducedMotion,
+                RemovePageClutterEnabled,
+                SimplifyPageTextEnabled));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -292,6 +303,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             GazeSpotlightEnabled = saved.GazeSpotlight;
             WindowFirewallEnabled = saved.WindowFirewall;
             ReducedMotion = saved.ReducedMotion;
+            RemovePageClutterEnabled = saved.RemovePageClutter;
+            SimplifyPageTextEnabled = saved.SimplifyPageText;
         }
         finally
         {
@@ -661,6 +674,32 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             ? $"{snapshot.ProcessName} · {anchorSource} · no text recognised"
             : $"{anchorSource} · \u201c{Truncate(snapshot.FocusLine.Text, 90)}\u201d";
         _services.Trace($"screen process={snapshot.ProcessName} lines={snapshot.Lines.Count} anchor={anchorSource} focus=\"{snapshot.FocusLine?.Text}\"");
+    }
+
+    /// <summary>
+    /// The text that just appeared where the person is typing, or null when there is nothing new
+    /// to judge. Only composing activities are considered: elsewhere the keyboard is shortcuts and
+    /// search boxes, where "not a word" means nothing.
+    /// </summary>
+    private string? ResolveTypedText(ActivityKind activity, SensorWindow raw, ScreenSnapshot? screen)
+    {
+        if (activity is not (ActivityKind.Coding or ActivityKind.Writing)
+            || raw.IsSecureWindow
+            || raw.KeyCount < TypedTextKeyCount
+            || screen?.FocusLine is null)
+        {
+            return null;
+        }
+
+        var line = screen.FocusLine.Text;
+        if (string.IsNullOrWhiteSpace(line) || string.Equals(line, _lastTypedLine, StringComparison.Ordinal))
+        {
+            // Unchanged text is text the person is looking at, not text they just produced.
+            return null;
+        }
+
+        _lastTypedLine = line;
+        return line;
     }
 
     private void RecordTrail(ScreenSnapshot snapshot, DateTimeOffset now)
@@ -1363,12 +1402,19 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     screen: _lastScreen,
                     keyCount: raw.KeyCount,
                     scrollReversalCount: raw.ScrollReversalCount,
-                    mouseDistance: raw.MouseDistance));
+                    mouseDistance: raw.MouseDistance,
+                    isScrollBurst: _attentionFusion.LastScrollThrashSustained));
                 _ = JudgeScreenProgressAsync(raw);
             }
             var progressObserved = raw.KeyCount > 0
                 || raw.MouseDistance >= 4
                 || raw.ScrollReversalCount > 0;
+            var activity = ActivityClassifier.Infer(
+                context.ProcessName,
+                context.WindowTitle,
+                raw.KeyCount,
+                raw.ScrollReversalCount,
+                raw.MouseDistance);
             var fused = _attentionFusion.Apply(AttentionEvidence.At(
                 now,
                 raw.KeyCount,
@@ -1383,7 +1429,11 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 raw.ScrollReversalCount,
                 progressObserved,
                 raw.IsSecureWindow,
-                _services.Inference.IsAvailable));
+                _services.Inference.IsAvailable,
+                scrollNotchCount: raw.ScrollNotchCount,
+                navigationKeyCount: _services.Sensors.LastNavigationKeyCount,
+                activity: activity,
+                typedText: ResolveTypedText(activity, raw, visibleText)));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
             await _services.Overlays.UpdateAttentionAsync(prediction);
             ApplyPrediction(prediction, AttentionAnalyzer.DescribePlace(context.ProcessName, context.Domain));
@@ -1645,7 +1695,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 secureWindow: _lastSecureWindow,
                 browserImageBlur: BlurImagesEnabled,
                 browserFutureTextMask: HideFutureTextEnabled,
-                browserAnimationSuppression: SuppressAnimationsEnabled));
+                browserAnimationSuppression: SuppressAnimationsEnabled,
+                browserClutterRemoval: RemovePageClutterEnabled,
+                browserTextSimplification: SimplifyPageTextEnabled,
+                taskKeywords: string.Join(' ', TaskEvidenceMatcher.Keywords(TaskTitle, CurrentSubtask))));
             ToolkitStatus = string.Join(" · ", results
                 .Where(static result => result.Status != "Off")
                 .Select(static result => $"{result.Feature}: {result.Status}"));
@@ -1670,6 +1723,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         if (BlurImagesEnabled) wanted.Add("image blur");
         if (HideFutureTextEnabled) wanted.Add("future-text mask");
         if (SuppressAnimationsEnabled) wanted.Add("animation pause");
+        if (RemovePageClutterEnabled) wanted.Add("off-task blocks deleted");
+        if (SimplifyPageTextEnabled) wanted.Add("sentences trimmed");
         var features = wanted.Count == 0 ? "no page tools selected" : string.Join(", ", wanted);
         BrowserStatus = IsBrowserConnected
             ? $"Browser extension connected · {features} also applied inside web pages"

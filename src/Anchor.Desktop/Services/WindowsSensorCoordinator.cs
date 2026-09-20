@@ -19,6 +19,12 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
     public ChannelReader<DerivedEvent>? Events => _events?.Reader;
     public InputActivitySensor? Input => _input;
 
+    /// <summary>Wheel notches in the last sampled window, for the scroll-burst detector.</summary>
+    public int LastScrollNotchCount { get; private set; }
+
+    /// <summary>Page-up/page-down/arrow presses in that window; they scroll rather than type.</summary>
+    public int LastNavigationKeyCount { get; private set; }
+
     public WindowsSensorCoordinator(BrowserContextTracker? browserContext = null)
     {
         _browserContext = browserContext;
@@ -82,6 +88,9 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             ? switchCount
             : 0;
 
+        LastScrollNotchCount = ParseInt(inputEvent, "scroll_notch_count");
+        LastNavigationKeyCount = ParseInt(inputEvent, "key_navigation_count");
+
         return SensorWindow.Create(
             keyCount: ParseInt(inputEvent, "key_count"),
             mouseDistance: ParseDouble(inputEvent, "mouse_distance"),
@@ -92,7 +101,8 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             scrollReversalCount: ParseInt(inputEvent, "scroll_reversal_count"),
             isSecureWindow: secure,
             isWorkerAvailable: workerAvailable,
-            timestamp: now);
+            timestamp: now,
+            scrollNotchCount: LastScrollNotchCount);
     }
 
     /// <summary>Feeds raw input to the active session (if any) and returns the key-down virtual key.</summary>
@@ -110,7 +120,8 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
         ScreenSnapshot? screen = null,
         int keyCount = 0,
         int scrollReversalCount = 0,
-        double mouseDistance = 0)
+        double mouseDistance = 0,
+        bool isScrollBurst = false)
     {
         var foreground = _foreground?.LastEvent;
         var process = GetFeature(foreground, "process");
@@ -161,7 +172,11 @@ public sealed class WindowsSensorCoordinator : ISensorCoordinator, IDisposable
             FocusSource: screenIsFresh ? screen!.FocusSource : FocusSource.None,
             ScreenExcerpt: screenIsFresh ? screen!.Excerpt : null,
             KeyCount: keyCount,
-            ScrollReversalCount: scrollReversalCount);
+            ScrollReversalCount: scrollReversalCount,
+            DocumentPosition: screenIsFresh
+                ? DocumentPositionReader.DescribePage(screen!.Lines, browser?.Title ?? title)
+                : DocumentPositionReader.DescribePage(null, browser?.Title ?? title),
+            IsScrollBurst: isScrollBurst);
     }
 
     public TaskContext CreateTaskContext(

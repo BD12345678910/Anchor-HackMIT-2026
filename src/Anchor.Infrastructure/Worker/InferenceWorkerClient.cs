@@ -136,7 +136,11 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
                     TimestampUnixMs = window.Timestamp.ToUnixTimeMilliseconds(),
                     KeyCount = checked((uint)window.KeyCount),
                     MouseDistance = window.MouseDistance,
-                    IdleSeconds = window.IdleSeconds,
+                    // The worker has no idea what the person is doing; pauses while coding or
+                    // writing are thinking time, so they are discounted before it sees them.
+                    IdleSeconds = Math.Max(
+                        0,
+                        window.IdleSeconds - AttentionStateMachine.ThinkingTolerance(window.Activity)),
                     AppRelevance = window.AppRelevance,
                     GazePresence = window.GazePresence,
                     AppSwitchCount = checked((uint)window.AppSwitchCount),
@@ -151,6 +155,26 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
                 DateTime.UtcNow + _options.RpcDeadline,
                 cancellationToken);
             var reply = await call.ResponseAsync;
+            if (window.GibberishTyping)
+            {
+                return AttentionPrediction.Create(
+                    AttentionState.Drifting,
+                    Math.Max(reply.Confidence, 0.7),
+                    Math.Max(reply.DistractionProbability, 0.6),
+                    [.. reply.ReasonCodes, "gibberish_typing"]);
+            }
+
+            if (window.ScrollThrashSustained)
+            {
+                // Scroll bursts are measured on the desktop side, where the wheel events are; the
+                // worker model never sees them, so its verdict is amended rather than trusted.
+                return AttentionPrediction.Create(
+                    AttentionState.Stuck,
+                    Math.Max(reply.Confidence, 0.86),
+                    Math.Max(reply.DistractionProbability, 0.72),
+                    [.. reply.ReasonCodes, "scroll_thrash"]);
+            }
+
             var state = reply.ReasonCodes.Contains("stuck_phrase", StringComparer.Ordinal)
                 ? AttentionState.Stuck
                 : reply.DistractionProbability switch

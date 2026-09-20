@@ -54,6 +54,17 @@ public static class TaskEvidenceMatcher
         return new TaskEvidenceMatch(Math.Clamp(score, 0, 1), matched);
     }
 
+    /// <summary>
+    /// The words that make a page block worth keeping: goal and step terms with the filler removed.
+    /// The page editor keeps any sentence or block that mentions one of them.
+    /// </summary>
+    public static IReadOnlyList<string> Keywords(string? goal, string? step, int limit = 12) =>
+        [.. Tokenize(goal)
+            .Concat(Tokenize(step))
+            .Where(static token => token.Length >= 3 && !StopWords.Contains(token) && !IsNumber(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(Math.Max(0, limit))];
+
     internal static bool SharesStem(string left, string right)
     {
         if (left.Length < 4 || right.Length < 4)

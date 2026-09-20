@@ -17,7 +17,11 @@ public sealed record AttentionEvidence(
     bool ProgressObserved,
     bool IsSecureWindow,
     bool IsWorkerAvailable,
-    bool IsManualReport)
+    bool IsManualReport,
+    int ScrollNotchCount = 0,
+    int NavigationKeyCount = 0,
+    ActivityKind Activity = ActivityKind.Unknown,
+    string? TypedText = null)
 {
     public static AttentionEvidence At(
         DateTimeOffset timestamp,
@@ -34,7 +38,11 @@ public sealed record AttentionEvidence(
         bool progressObserved = true,
         bool isSecureWindow = false,
         bool isWorkerAvailable = true,
-        bool isManualReport = false) =>
+        bool isManualReport = false,
+        int scrollNotchCount = 0,
+        int navigationKeyCount = 0,
+        ActivityKind activity = ActivityKind.Unknown,
+        string? typedText = null) =>
         new(
             timestamp,
             keyCount,
@@ -50,7 +58,11 @@ public sealed record AttentionEvidence(
             progressObserved,
             isSecureWindow,
             isWorkerAvailable,
-            isManualReport);
+            isManualReport,
+            scrollNotchCount,
+            navigationKeyCount,
+            activity,
+            typedText);
 }
 
 public sealed record AttentionFusionResult(
@@ -60,9 +72,23 @@ public sealed record AttentionFusionResult(
 public sealed class AttentionFusion
 {
     private static readonly TimeSpan SustainedEvidenceDuration = TimeSpan.FromSeconds(4);
+
+    /// <summary>A flick of the wheel is not a distraction; a couple of seconds of it is.</summary>
+    public static readonly TimeSpan ScrollBurstDuration = TimeSpan.FromSeconds(2);
+
     private readonly AttentionStateMachine _stateMachine = AttentionStateMachine.CreateDefault();
+    private readonly ScrollBehaviorAnalyzer _scroll = new();
     private DateTimeOffset? _gazeAwaySince;
     private DateTimeOffset? _noProgressSince;
+
+    /// <summary>How the last few seconds of scrolling looked, for the recovery card.</summary>
+    public ScrollBehavior? LastScrollBehavior { get; private set; }
+
+    /// <summary>Whether the text most recently typed read as words or as mashing.</summary>
+    public TypingQuality? LastTypingQuality { get; private set; }
+
+    /// <summary>Whether the most recent window held a scroll burst long enough to count.</summary>
+    public bool LastScrollThrashSustained { get; private set; }
 
     public AttentionFusionResult Apply(AttentionEvidence evidence)
     {
@@ -94,6 +120,23 @@ public sealed class AttentionFusion
             _noProgressSince ??= evidence.Timestamp;
         }
 
+        var scroll = _scroll.Observe(
+            evidence.Timestamp,
+            evidence.ScrollNotchCount,
+            evidence.ScrollReversalCount,
+            // Page-up/page-down are scrolling, not writing: only real typing means the user is
+            // working in the document rather than flicking through it.
+            Math.Max(0, evidence.KeyCount - evidence.NavigationKeyCount));
+        LastScrollBehavior = scroll;
+        var scrollThrashSustained = scroll.IsThrashing
+            && scroll.StartedAt is { } burstStart
+            && evidence.Timestamp - burstStart >= ScrollBurstDuration;
+        LastScrollThrashSustained = scrollThrashSustained;
+
+        LastTypingQuality = evidence.TypedText is null
+            ? null
+            : TypingQualityAnalyzer.Assess(evidence.TypedText);
+
         var gazeAwaySustained = IsSustained(_gazeAwaySince, evidence.Timestamp);
         var noProgressSustained = IsSustained(_noProgressSince, evidence.Timestamp);
         var window = SensorWindow.Create(
@@ -111,7 +154,11 @@ public sealed class AttentionFusion
             gazeAvailable: gazeAvailable,
             gazeAwaySustained: gazeAwaySustained,
             progressObserved: evidence.ProgressObserved,
-            noProgressSustained: noProgressSustained);
+            noProgressSustained: noProgressSustained,
+            scrollNotchCount: evidence.ScrollNotchCount,
+            scrollThrashSustained: scrollThrashSustained,
+            activity: evidence.Activity,
+            gibberishTyping: LastTypingQuality?.IsGibberish == true);
         var prediction = _stateMachine.Update(window);
         return new AttentionFusionResult(
             window,

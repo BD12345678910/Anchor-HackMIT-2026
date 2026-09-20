@@ -14,6 +14,13 @@ const {
   clearFutureTextMasks,
   applyAnimationSuppression,
   createReadingTracker,
+  removeOffTaskElements,
+  restoreRemovedElements,
+  rewriteSentences,
+  restoreRewrittenText,
+  shortenSentence,
+  downscaleImageSource,
+  restorePixelatedImages,
 } = require("../content-script.js");
 
 class FakeClassList {
@@ -174,4 +181,123 @@ test("clearing image filters preserves future text masks", () => {
 
   assert.equal(image.style.filter, "sepia(1)");
   assert.equal(paragraph.classList.contains("anchor-future-mask"), true);
+});
+
+class FakeBlock {
+  constructor(options = {}) {
+    this.tagName = (options.tagName ?? "div").toUpperCase();
+    this.id = options.id ?? "";
+    this.dataset = {};
+    this.style = { height: "", minHeight: "", width: "", imageRendering: "" };
+    this.classList = new FakeClassList();
+    this.innerHTML = options.html ?? "";
+    this.textContent = options.text ?? "";
+    this.isContentEditable = false;
+    this._height = options.height ?? 0;
+  }
+  getBoundingClientRect() { return { top: 0, bottom: this._height, width: 600, height: this._height }; }
+  closest() { return null; }
+  contains() { return false; }
+}
+
+class PageRoot {
+  constructor(blocks = [], paragraphs = []) { this.blocks = blocks; this.paragraphs = paragraphs; }
+  querySelector() { return null; }
+  querySelectorAll(selector) {
+    const all = [...this.blocks, ...this.paragraphs];
+    if (selector.startsWith("[data-anchor-")) {
+      const attribute = selector.slice(13, selector.indexOf("=")).replace(/-(.)/g, (_match, letter) => letter.toUpperCase());
+      return all.filter((element) => element.dataset[`anchor${attribute[0].toUpperCase()}${attribute.slice(1)}`] === "true");
+    }
+    if (selector === "p, article li, main li") return this.paragraphs;
+    return this.blocks.filter((block) => selector === block.tagName.toLowerCase() || selector === `#${block.id}`);
+  }
+}
+
+test("off-task page furniture is emptied out of the HTML but keeps its height", () => {
+  const advert = new FakeBlock({ tagName: "aside", html: "<p>Buy now</p>", text: "Buy now", height: 240 });
+  const related = new FakeBlock({ tagName: "aside", html: "<p>More about cats</p>", text: "More about cats", height: 180 });
+  const root = new PageRoot([advert, related]);
+
+  assert.equal(removeOffTaskElements(root, { keywords: ["cats"] }), 1);
+  assert.equal(advert.innerHTML, "");
+  assert.equal(advert.style.height, "240px");
+  assert.equal(related.innerHTML, "<p>More about cats</p>");
+
+  assert.equal(restoreRemovedElements(root), 1);
+  assert.equal(advert.innerHTML, "<p>Buy now</p>");
+  assert.equal(advert.style.height, "");
+});
+
+test("irrelevant sentences are deleted, long ones shortened, and the paragraph keeps its box", () => {
+  const paragraph = new FakeBlock({
+    tagName: "p",
+    html: "<span>original</span>",
+    height: 96,
+    text: "Cats groom themselves. Subscribe to our newsletter for deals. "
+      + "Cats also sleep for roughly sixteen hours each day, which is far more than most other "
+      + "domesticated animals and is one reason they seem so calm to their owners at home.",
+  });
+  const root = new PageRoot([], [paragraph]);
+
+  assert.equal(rewriteSentences(root, { keywords: ["cats"], maxWords: 12 }), 1);
+  assert.equal(paragraph.textContent.includes("newsletter"), false);
+  assert.equal(paragraph.textContent.startsWith("Cats groom themselves."), true);
+  assert.match(paragraph.textContent, /…$/);
+  assert.equal(paragraph.style.minHeight, "96px");
+
+  assert.equal(restoreRewrittenText(root), 1);
+  assert.equal(paragraph.innerHTML, "<span>original</span>");
+  assert.equal(paragraph.style.minHeight, "");
+});
+
+test("shortening keeps the leading clauses of a sentence", () => {
+  const sentence = "Dynamic programming, which trades memory for time, solves overlapping subproblems by "
+    + "storing each answer once and reusing it later.";
+  assert.equal(shortenSentence(sentence, 40), sentence);
+  const short = shortenSentence(sentence, 10);
+  assert.equal(short.startsWith("Dynamic programming, which trades memory for time,"), true);
+  assert.ok(short.split(/\s+/).length <= 11);
+});
+
+test("pictures are rewritten to a low-resolution source and restored", () => {
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => ({ imageSmoothingEnabled: true, drawImage() { } }),
+    toDataURL: () => "data:image/jpeg;base64,tiny",
+  };
+  const image = new FakeBlock({ tagName: "img" });
+  image.naturalWidth = 600;
+  image.naturalHeight = 400;
+  image.src = "https://cdn.test/hero.jpg";
+  image.getAttribute = (name) => (name === "src" ? image.src : null);
+  image.setAttribute = (name, value) => { if (name === "src") image.src = value; };
+  const root = new PageRoot([image]);
+
+  assert.equal(downscaleImageSource(image, { factor: 10, createCanvas: () => canvas }), true);
+  assert.equal(image.src, "data:image/jpeg;base64,tiny");
+  assert.equal(canvas.width, 60);
+  assert.equal(image.style.imageRendering, "pixelated");
+
+  assert.equal(restorePixelatedImages(root), 1);
+  assert.equal(image.src, "https://cdn.test/hero.jpg");
+  assert.equal(image.style.imageRendering, "");
+});
+
+test("a cross-origin canvas leaves the picture untouched so CSS blur can take over", () => {
+  const tainted = {
+    width: 0,
+    height: 0,
+    getContext: () => ({ imageSmoothingEnabled: true, drawImage() { } }),
+    toDataURL: () => { throw new Error("tainted canvas"); },
+  };
+  const image = new FakeBlock({ tagName: "img" });
+  image.naturalWidth = 600;
+  image.naturalHeight = 400;
+  image.src = "https://cdn.test/hero.jpg";
+
+  assert.equal(downscaleImageSource(image, { createCanvas: () => tainted }), false);
+  assert.equal(image.src, "https://cdn.test/hero.jpg");
+  assert.equal(image.dataset.anchorPixelated, undefined);
 });

@@ -32,6 +32,17 @@
       { command: "setVisualFilter", enabled: state.imageBlur ?? saved.imageBlur ?? true, threshold: state.threshold ?? saved.threshold ?? 0.62 },
       { command: "setFutureTextMask", enabled: state.futureTextMask ?? saved.futureTextMask ?? false, lookahead: state.lookahead ?? saved.lookahead ?? 1 },
       { command: "setAnimationSuppression", enabled: state.suppressAnimations ?? saved.suppressAnimations ?? false },
+      {
+        command: "setClutterRemoval",
+        enabled: state.clutterRemoval ?? saved.clutterRemoval ?? false,
+        keywords: state.taskKeywords ?? [],
+      },
+      {
+        command: "setTextSimplification",
+        enabled: state.simplifyText ?? saved.simplifyText ?? false,
+        maxWords: state.maxWords ?? saved.maxWords ?? 28,
+        keywords: state.taskKeywords ?? [],
+      },
     ];
   }
 

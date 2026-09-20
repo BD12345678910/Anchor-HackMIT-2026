@@ -82,4 +82,16 @@ public sealed class LocalTaskPlannerTests
 
         Assert.Equal(0, TaskEvidenceMatcher.Evaluate(step, "read 3 chapters", "   ").Score);
     }
+
+    [Fact]
+    public void Page_editing_keywords_drop_filler_numbers_and_duplicates()
+    {
+        var keywords = TaskEvidenceMatcher.Keywords("do 3 usaco problems", "Open the first USACO problem");
+
+        Assert.Contains("usaco", keywords);
+        Assert.Contains("problems", keywords);
+        Assert.DoesNotContain("the", keywords);
+        Assert.DoesNotContain("3", keywords);
+        Assert.Equal(keywords.Distinct(StringComparer.OrdinalIgnoreCase).Count(), keywords.Count);
+    }
 }

@@ -49,4 +49,28 @@ public sealed class ToolkitStateTests
         Assert.False(state.BrowserFutureTextMask);
         Assert.True(state.BrowserAnimationSuppression);
     }
+
+    [Fact]
+    public void Page_editing_needs_a_running_session_and_carries_the_task_words()
+    {
+        var idle = ToolkitState.FromPreferences(
+            sessionActive: false,
+            gazeSpotlight: false,
+            peripheralDim: false,
+            windowFirewall: false,
+            pointerGuard: false,
+            secureWindow: false,
+            browserImageBlur: false,
+            browserFutureTextMask: false,
+            browserAnimationSuppression: false,
+            browserClutterRemoval: true,
+            browserTextSimplification: true,
+            taskKeywords: "usaco silver");
+        var running = idle with { BrowserClutterRemoval = true };
+
+        Assert.False(idle.BrowserClutterRemoval);
+        Assert.False(idle.BrowserTextSimplification);
+        Assert.Equal("usaco silver", idle.TaskKeywords);
+        Assert.True(running.BrowserClutterRemoval);
+    }
 }

@@ -29,6 +29,7 @@ public sealed class InputActivitySensor
     private readonly int[] _keyCounts = new int[Enum.GetValues<VirtualKeyCategory>().Length];
     private double _mouseDistance;
     private int _scrollReversals;
+    private int _scrollNotches;
     private int _lastScrollDirection;
 
     public InputActivitySensor(Guid sessionId)
@@ -72,6 +73,8 @@ public sealed class InputActivitySensor
                 _scrollReversals++;
             }
 
+            // One notch is WHEEL_DELTA; a fast flick reports several at once.
+            _scrollNotches += Math.Max(1, Math.Abs(delta) / 120);
             _lastScrollDirection = direction;
         }
     }
@@ -92,12 +95,14 @@ public sealed class InputActivitySensor
                 ["key_modifier_count"] = _keyCounts[(int)VirtualKeyCategory.Modifier].ToString(CultureInfo.InvariantCulture),
                 ["key_function_count"] = _keyCounts[(int)VirtualKeyCategory.Function].ToString(CultureInfo.InvariantCulture),
                 ["key_other_count"] = _keyCounts[(int)VirtualKeyCategory.Other].ToString(CultureInfo.InvariantCulture),
-                ["scroll_reversal_count"] = _scrollReversals.ToString(CultureInfo.InvariantCulture)
+                ["scroll_reversal_count"] = _scrollReversals.ToString(CultureInfo.InvariantCulture),
+                ["scroll_notch_count"] = _scrollNotches.ToString(CultureInfo.InvariantCulture)
             };
 
             Array.Clear(_keyCounts);
             _mouseDistance = 0;
             _scrollReversals = 0;
+            _scrollNotches = 0;
             _lastScrollDirection = 0;
             return DerivedEvent.Create(_sessionId, timestamp, "input", "activity", features);
         }
@@ -137,8 +142,13 @@ public sealed class InputActivitySensor
         if (input.Header.Type == RimTypeKeyboard
             && input.Data.Keyboard.Message is WmKeyDown or WmSysKeyDown)
         {
-            RecordKeyDown(CategorizeVirtualKey(input.Data.Keyboard.VirtualKey));
-            return input.Data.Keyboard.VirtualKey;
+            var key = input.Data.Keyboard.VirtualKey;
+            RecordKeyDown(CategorizeVirtualKey(key));
+            if (PageKeyDirection(key) is { } direction)
+            {
+                RecordScrollDelta(direction * 120);
+            }
+            return key;
         }
 
         return null;
@@ -183,6 +193,14 @@ public sealed class InputActivitySensor
             Marshal.FreeHGlobal(buffer);
         }
     }
+
+    /// <summary>Keys that move the document like the wheel does: page up/down and the arrows.</summary>
+    public static int? PageKeyDirection(ushort key) => key switch
+    {
+        0x21 or 0x26 => -1,
+        0x22 or 0x28 => 1,
+        _ => null
+    };
 
     private static VirtualKeyCategory CategorizeVirtualKey(ushort key) => key switch
     {
