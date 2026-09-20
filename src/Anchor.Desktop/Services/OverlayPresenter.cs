@@ -208,10 +208,17 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     }
                     break;
                 case AttentionState.Focused:
-                    if (++_focusedTicks >= 2 && _gate is null && _previewTimer is null)
+                    // A gate the user is looking at stays; one left behind in the background is
+                    // dismissed once relevant work resumes, since Windows may never have let it take focus.
+                    if (++_focusedTicks >= 2 && _previewTimer is null && (_gate is null || !_gate.IsActive))
                     {
+                        Close(ref _gate);
                         Close(ref _firewall);
                         Close(ref _filter);
+                        if (!HasAnyOverlay)
+                        {
+                            OverlaysCleared?.Invoke(this, EventArgs.Empty);
+                        }
                     }
                     break;
                 default:
