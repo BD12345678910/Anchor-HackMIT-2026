@@ -24,13 +24,45 @@ public static class LocalContextReminder
             _ => "you had"
         };
         var step = string.IsNullOrWhiteSpace(capsule.CurrentSubtask) ? capsule.TaskTitle : capsule.CurrentSubtask;
+        var position = string.IsNullOrWhiteSpace(capsule.DocumentPosition) ? null : capsule.DocumentPosition;
+
+        // Scrolling past your place is its own kind of losing the thread: the document is still in
+        // front, so the useful reminder is which page you were on before the flicking started.
+        if (capsule.Reason == DistractionReason.ScrollBurst)
+        {
+            var place = position is null ? capsule.Location : position;
+            return new ContextReminder(
+                $"You scrolled past your place in {document}",
+                focus is null
+                    ? $"Before the scrolling you were at {place}."
+                    : $"Before the scrolling you were at {place}, where {anchorSource} {focus}.",
+                position is null
+                    ? $"Scroll back to where you stopped reading and continue: {step}."
+                    : $"Go back to {position} and read on from there: {step}.",
+                "Local recall",
+                IsFallback: true);
+        }
+
+        // Mashing is not a pause to think: the work is still there, so the reminder points at the
+        // line that was being written and what it was supposed to say.
+        if (capsule.Reason == DistractionReason.GibberishTyping)
+        {
+            return new ContextReminder(
+                $"That last bit of typing in {document} was not words",
+                focus is null
+                    ? $"You were working on {step} in {app}."
+                    : $"You were writing near {focus} in {document}.",
+                $"Delete the stray characters and pick up {step} from that line.",
+                "Local recall",
+                IsFallback: true);
+        }
 
         var (headline, where) = capsule.Activity switch
         {
             ActivityKind.Reading => (
                 $"You were reading {document}",
                 focus is null
-                    ? $"You were part-way through {document} ({capsule.Location})."
+                    ? $"You were part-way through {document} ({position ?? capsule.Location})."
                     : $"The last line {anchorSource} {focus}."),
             ActivityKind.Coding => (
                 $"You were coding in {document}",

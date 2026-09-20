@@ -15,7 +15,11 @@ public sealed record SensorWindow(
     bool GazeAvailable,
     bool GazeAwaySustained,
     bool ProgressObserved,
-    bool NoProgressSustained)
+    bool NoProgressSustained,
+    int ScrollNotchCount = 0,
+    bool ScrollThrashSustained = false,
+    ActivityKind Activity = ActivityKind.Unknown,
+    bool GibberishTyping = false)
 {
     public static SensorWindow Create(
         int keyCount,
@@ -32,13 +36,18 @@ public sealed record SensorWindow(
         bool gazeAvailable = false,
         bool gazeAwaySustained = false,
         bool progressObserved = true,
-        bool noProgressSustained = false)
+        bool noProgressSustained = false,
+        int scrollNotchCount = 0,
+        bool scrollThrashSustained = false,
+        ActivityKind activity = ActivityKind.Unknown,
+        bool gibberishTyping = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keyCount);
         ArgumentOutOfRangeException.ThrowIfNegative(mouseDistance);
         ArgumentOutOfRangeException.ThrowIfNegative(idleSeconds);
         ArgumentOutOfRangeException.ThrowIfNegative(appSwitchCount);
         ArgumentOutOfRangeException.ThrowIfNegative(scrollReversalCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(scrollNotchCount);
 
         return new SensorWindow(
             timestamp ?? DateTimeOffset.UtcNow,
@@ -55,7 +64,11 @@ public sealed record SensorWindow(
             gazeAvailable,
             gazeAwaySustained,
             progressObserved,
-            noProgressSustained);
+            noProgressSustained,
+            scrollNotchCount,
+            scrollThrashSustained,
+            activity,
+            gibberishTyping);
     }
 
     private static double ClampScore(double value) =>

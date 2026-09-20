@@ -547,6 +547,20 @@ public sealed class DeepSeekClient : ITaskIntelligence
             FocusSource.Viewport => "the middle of the visible page (no gaze/caret available)",
             _ => "unknown"
         };
+        var scrollNote = capsule.Reason switch
+        {
+            DistractionReason.ScrollBurst => """
+              They lost the thread by scrolling through this document fast and erratically, so the document is still
+              the right one: name the page/position they were on before the scrolling and send them back to it.
+
+              """,
+            DistractionReason.GibberishTyping => """
+              The characters they just typed are not words (keyboard mashing or a held key), so they are still in the
+              right document: tell them to clear the stray characters and name the line/thought they were writing.
+
+              """,
+            _ => string.Empty
+        };
         var prompt = $$"""
             Return JSON with this exact shape:
             {"headline":"<= 60 chars, 'You were ...'","whereYouWere":"1-2 sentences, concrete","resumeWith":"one imperative sentence"}
@@ -557,12 +571,13 @@ public sealed class DeepSeekClient : ITaskIntelligence
             sub-step; for browsing say which page and what they were looking for; for a video or lecture name it and
             the timestamp to resume from. Use only the facts below, quote screen text verbatim when you quote, never
             invent content, never tell them to close the application or page they were working in. Warm, brief, no emojis.
-            Task: {{Bound(capsule.TaskTitle, 240)}}
+            {{scrollNote}}Task: {{Bound(capsule.TaskTitle, 240)}}
             Active step: {{Bound(capsule.CurrentSubtask, 240)}}
             Activity: {{ActivityClassifier.Describe(capsule.Activity)}}
             Application: {{Bound(capsule.Application, 120)}}
             Window/document: {{Bound(capsule.DocumentIdentity, 240)}}
             Location: {{Bound(capsule.Location, 240)}}
+            Position in document before the distraction: {{Bound(capsule.DocumentPosition, 60)}}
             Keys typed in last window: {{capsule.KeyCount}}; scroll reversals: {{capsule.ScrollReversalCount}}
             Focus line ({{focusSource}}): {{Bound(capsule.FocusText, 400)}}
             Screen excerpt around the focus line (» marks it):

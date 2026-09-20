@@ -21,7 +21,8 @@ public sealed record ContextCapsule(
     FocusSource FocusSource = FocusSource.None,
     string? ScreenExcerpt = null,
     int KeyCount = 0,
-    int ScrollReversalCount = 0);
+    int ScrollReversalCount = 0,
+    string? DocumentPosition = null);
 
 public enum DistractionReason
 {
@@ -30,7 +31,9 @@ public enum DistractionReason
     IdleReturn,
     LostGaze,
     ReadingSkip,
-    StuckPhrase
+    StuckPhrase,
+    ScrollBurst,
+    GibberishTyping
 }
 
 public sealed record ContextObservation(
@@ -52,4 +55,6 @@ public sealed record ContextObservation(
     FocusSource FocusSource = FocusSource.None,
     string? ScreenExcerpt = null,
     int KeyCount = 0,
-    int ScrollReversalCount = 0);
+    int ScrollReversalCount = 0,
+    string? DocumentPosition = null,
+    bool IsScrollBurst = false);

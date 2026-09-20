@@ -29,6 +29,14 @@ public sealed class ContextCapsuleManager
             return null;
         }
 
+        // While the user is flicking through the document, every screen is a page they did not
+        // read. The anchor stays on the last calm screen so the recovery card can send them back
+        // to the page they were actually on before the scrolling started.
+        if (observation.IsScrollBurst && _lastConfidentObservation is not null)
+        {
+            return CreateCapsule(DistractionReason.ScrollBurst);
+        }
+
         _lastConfidentObservation = observation with
         {
             Application = Bound(observation.Application, 120),
@@ -42,6 +50,7 @@ public sealed class ContextCapsuleManager
             RelevanceReason = Bound(SensitiveTextRedactor.Redact(observation.RelevanceReason), 500),
             FocusText = BoundNullable(SensitiveTextRedactor.Redact(observation.FocusText), 400),
             ScreenExcerpt = BoundNullable(SensitiveTextRedactor.Redact(observation.ScreenExcerpt), 1_600),
+            DocumentPosition = BoundNullable(observation.DocumentPosition, 60),
             EvidenceTimestamp = observation.EvidenceTimestamp ?? DateTimeOffset.UtcNow,
             Confidence = Math.Clamp(observation.Confidence, 0, 1)
         };
@@ -107,7 +116,8 @@ public sealed class ContextCapsuleManager
             anchor.FocusSource,
             anchor.ScreenExcerpt,
             anchor.KeyCount,
-            anchor.ScrollReversalCount);
+            anchor.ScrollReversalCount,
+            anchor.DocumentPosition);
     }
 
     private static string Bound(string? value, int length) =>
