@@ -2,6 +2,7 @@ using Anchor.Core.Models;
 using Anchor.Core.Services;
 using Anchor.Infrastructure.Windows;
 using Anchor.Infrastructure.Browser;
+using Anchor_Desktop.Interventions;
 using Anchor_Desktop.Overlays;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
@@ -23,13 +24,22 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     private (double X, double Y, DateTimeOffset At)? _lastSpotlight;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _previewTimer;
     private int _focusedTicks;
+    private bool _imageBlurSuspended;
+    private bool _imageBlurPreview;
 
     private static readonly TimeSpan PreviewDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan ImageBlurPreviewDuration = TimeSpan.FromSeconds(20);
 
-    public OverlayPresenter(NativeBridgeServer? browserBridge = null)
+    public OverlayPresenter(NativeBridgeServer? browserBridge = null, Action<string, Exception>? logError = null)
     {
         _browserBridge = browserBridge;
+        ImageBlur = new DesktopImageBlurService(
+            () => (_imageBlurPreview || (_toolkitState.ImageBlur && !_imageBlurSuspended)) && !_toolkitState.SecureWindow,
+            logError ?? ((_, _) => { }));
     }
+
+    /// <summary>Extension-free picture blur for the foreground window (pixel capture + layered overlay).</summary>
+    public DesktopImageBlurService ImageBlur { get; }
 
     public string TaskTitle { get; set; } = "Return to your task";
     public string CurrentSubtask { get; set; } = "Choose the smallest next action";
@@ -75,6 +85,14 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             }));
             EnableVisualFilter = state.PeripheralDim;
             EnablePointerGuard = state.PointerGuard;
+            _imageBlurSuspended = false;
+            ImageBlur.Refresh();
+            results.Add(new(
+                ToolkitFeature.ImageBlur,
+                state.SecureWindow ? "Suppressed for secure window"
+                    : state.ImageBlur ? (ImageBlur.IsBlurring ? ImageBlur.Status : "Armed · blurs pictures in the front window")
+                    : state.BrowserImageBlur ? "Armed · starts with the focus session" : "Off",
+                ImageBlur.IsBlurring));
             if (state.SecureWindow)
             {
                 Close(ref _filter);
@@ -163,15 +181,21 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                     EnablePointerGuard = true;
                     ShowGate("pointer guard preview");
                     break;
+                case ToolkitFeature.ImageBlur:
+                    _imageBlurPreview = true;
+                    ImageBlur.Refresh();
+                    break;
             }
-            var timed = feature is ToolkitFeature.GazeSpotlight or ToolkitFeature.PeripheralDim or ToolkitFeature.WindowFirewall;
+            var timed = feature is ToolkitFeature.GazeSpotlight or ToolkitFeature.PeripheralDim or ToolkitFeature.WindowFirewall or ToolkitFeature.ImageBlur;
             if (timed)
             {
-                SchedulePreviewClear();
+                SchedulePreviewClear(feature == ToolkitFeature.ImageBlur ? ImageBlurPreviewDuration : PreviewDuration);
             }
             result ??= new ToolkitApplyResult(
                 feature,
-                timed
+                feature == ToolkitFeature.ImageBlur
+                    ? $"Previewing for {ImageBlurPreviewDuration.TotalSeconds:0} s · switch to a page with pictures"
+                    : timed
                     ? $"Previewing for {PreviewDuration.TotalSeconds:0} s · Esc clears it now"
                     : "Previewing · use the card's buttons or Esc to close it",
                 true);
@@ -237,12 +261,12 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         });
     }
 
-    private void SchedulePreviewClear()
+    private void SchedulePreviewClear(TimeSpan duration)
     {
         _previewTimer?.Stop();
         _previewTimer ??= App.DispatcherQueue.CreateTimer();
         _previewTimer.IsRepeating = false;
-        _previewTimer.Interval = PreviewDuration;
+        _previewTimer.Interval = duration;
         _previewTimer.Tick -= PreviewTimer_Tick;
         _previewTimer.Tick += PreviewTimer_Tick;
         _previewTimer.Start();
@@ -260,6 +284,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         Close(ref _spotlight);
         Close(ref _firewall);
         _lastSpotlight = null;
+        _imageBlurPreview = false;
+        ImageBlur.Refresh();
         if (!HasAnyOverlay)
         {
             OverlaysCleared?.Invoke(this, EventArgs.Empty);
@@ -366,6 +392,9 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         _previewTimer = null;
         _focusedTicks = 0;
         ReleasePointer();
+        _imageBlurPreview = false;
+        _imageBlurSuspended = true;
+        ImageBlur.Refresh();
         Close(ref _beacon);
         Close(ref _filter);
         Close(ref _recovery);

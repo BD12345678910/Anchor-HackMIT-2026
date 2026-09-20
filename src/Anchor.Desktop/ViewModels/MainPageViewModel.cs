@@ -47,8 +47,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _recordingTimer.Tick += RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant += Overlays_CurrentWindowMarkedRelevant;
         _services.Overlays.OverlaysCleared += Overlays_Cleared;
+        _services.Overlays.ImageBlur.StatusChanged += ImageBlur_StatusChanged;
         _services.Overlays.BreakdownProvider = BreakDownRecoveryStepAsync;
+        ImageBlurStatus = _services.Overlays.ImageBlur.Status;
     }
+
+    private void ImageBlur_StatusChanged(object? sender, string status) =>
+        App.DispatcherQueue.TryEnqueue(() => ImageBlurStatus = $"Image blur: {status}");
 
     public ObservableCollection<TimelineItem> Timeline { get; } = [];
     public ObservableCollection<TaskStepItem> TaskSteps { get; } = [];
@@ -88,6 +93,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial string ToolkitStatus { get; set; } = "Desktop tools ready";
     [ObservableProperty] public partial string BrowserStatus { get; set; } = "Browser extension: not connected";
     [ObservableProperty] public partial bool IsBrowserConnected { get; set; }
+    [ObservableProperty] public partial string ImageBlurStatus { get; set; } = "Image blur: off";
     [ObservableProperty] public partial CameraDevice? SelectedCamera { get; set; }
     [ObservableProperty] public partial bool GazeMirror { get; set; } = true;
     [ObservableProperty] public partial double GazeRotationDegrees { get; set; }
@@ -901,6 +907,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _recordingTimer.Tick -= RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant -= Overlays_CurrentWindowMarkedRelevant;
         _services.Overlays.OverlaysCleared -= Overlays_Cleared;
+        _services.Overlays.ImageBlur.StatusChanged -= ImageBlur_StatusChanged;
         _services.Overlays.BreakdownProvider = null;
         if (IsGazeRunning)
         {
@@ -1274,8 +1281,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         if (SuppressAnimationsEnabled) wanted.Add("animation pause");
         var features = wanted.Count == 0 ? "no page tools selected" : string.Join(", ", wanted);
         BrowserStatus = IsBrowserConnected
-            ? $"Browser extension connected · {features} apply on web pages"
-            : $"Browser extension not connected · {features} only work on web pages once the Anchor extension is loaded (browser\\anchor-extension). PDFs and desktop apps get the desktop tools instead.";
+            ? $"Browser extension connected · {features} also applied inside web pages"
+            : "Image blur works without any extension: it captures the front window (Chrome, Edge, Firefox, Word, PDF viewers), finds photo-like regions in the pixels and softens only those areas. Loading browser\\anchor-extension additionally enables future-text masking and animation pause inside web pages.";
     }
 
     [DllImport("user32.dll")]

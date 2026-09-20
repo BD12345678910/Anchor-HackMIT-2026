@@ -7,7 +7,8 @@ public enum ToolkitFeature
     WindowFirewall,
     IntentionGate,
     ContextReminder,
-    PointerGuard
+    PointerGuard,
+    ImageBlur
 }
 
 public sealed record ToolkitState(
@@ -18,7 +19,8 @@ public sealed record ToolkitState(
     bool SecureWindow = false,
     bool BrowserImageBlur = true,
     bool BrowserFutureTextMask = true,
-    bool BrowserAnimationSuppression = false)
+    bool BrowserAnimationSuppression = false,
+    bool ImageBlur = false)
 {
     public static ToolkitState Off { get; } = new(false, false, false, false, BrowserImageBlur: false, BrowserFutureTextMask: false);
 
@@ -40,7 +42,8 @@ public sealed record ToolkitState(
             secureWindow,
             browserImageBlur,
             browserFutureTextMask,
-            browserAnimationSuppression);
+            browserAnimationSuppression,
+            ImageBlur: sessionActive && browserImageBlur);
 }
 
 public sealed record ToolkitApplyResult(
