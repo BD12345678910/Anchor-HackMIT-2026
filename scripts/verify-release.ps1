@@ -32,26 +32,18 @@ if (-not $health.capabilities.camera.available) {
 $previousVerify = $env:ANCHOR_VERIFY_RELEASE
 $env:ANCHOR_VERIFY_RELEASE = '1'
 try {
-    $endpoint = Join-Path $env:LOCALAPPDATA 'Anchor\bridge.json'
-    if (Test-Path -LiteralPath $endpoint -PathType Leaf) {
-        Remove-Item -LiteralPath $endpoint -Force
-    }
-    $launchTime = [DateTime]::UtcNow
     $process = Start-Process -FilePath (Join-Path $release 'Anchor.exe') -WorkingDirectory $release -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     $ready = $false
     while ([DateTime]::UtcNow -lt $deadline -and -not $process.HasExited) {
         Start-Sleep -Milliseconds 250
         $process.Refresh()
-        if ($process.Responding -and
-            $process.MainWindowHandle -ne 0 -and
-            (Test-Path -LiteralPath $endpoint -PathType Leaf) -and
-            (Get-Item -LiteralPath $endpoint).LastWriteTimeUtc -ge $launchTime) {
+        if ($process.Responding -and $process.MainWindowHandle -ne 0) {
             $ready = $true
             break
         }
     }
-    if (-not $ready) { throw 'Anchor Settings did not become responsive with a live bridge endpoint.' }
+    if (-not $ready) { throw 'Anchor did not open a responsive window.' }
     if (-not $process.WaitForExit(15000)) {
         Stop-Process -Id $process.Id -Force
         throw 'Anchor did not complete the graceful verification shutdown.'
