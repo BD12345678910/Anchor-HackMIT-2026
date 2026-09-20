@@ -1133,6 +1133,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private async void Overlays_Cleared(object? sender, EventArgs e)
     {
+        if (StatusMessage.Contains("preview is visible", StringComparison.Ordinal))
+        {
+            StatusMessage = "Overlays released.";
+        }
         if (ToolkitStatus.Contains("Previewing", StringComparison.Ordinal))
         {
             await ApplyToolkitStateAsync();
