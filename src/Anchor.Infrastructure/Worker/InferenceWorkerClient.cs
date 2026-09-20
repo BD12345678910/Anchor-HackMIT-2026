@@ -175,6 +175,17 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
                     [.. reply.ReasonCodes, "scroll_thrash"]);
             }
 
+            if (window.AimlessMouseSustained)
+            {
+                // Pointer drift is also measured from raw input the worker never receives: it only
+                // gets total distance, which says nothing about whether the cursor went anywhere.
+                return AttentionPrediction.Create(
+                    AttentionState.Drifting,
+                    Math.Max(reply.Confidence, 0.7),
+                    Math.Max(reply.DistractionProbability, 0.6),
+                    [.. reply.ReasonCodes, "pointer_wandering"]);
+            }
+
             var state = reply.ReasonCodes.Contains("stuck_phrase", StringComparer.Ordinal)
                 ? AttentionState.Stuck
                 : reply.DistractionProbability switch

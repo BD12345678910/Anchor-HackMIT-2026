@@ -201,8 +201,14 @@ public sealed class SessionOrchestrator
             return DistractionReason.GibberishTyping;
         }
 
-        return reasonCodes.Contains("scroll_thrash", StringComparer.Ordinal)
-            ? DistractionReason.ScrollBurst
+        if (reasonCodes.Contains("scroll_thrash", StringComparer.Ordinal))
+        {
+            return DistractionReason.ScrollBurst;
+        }
+
+        return reasonCodes.Contains("pointer_wandering", StringComparer.Ordinal)
+            || reasonCodes.Contains("click_mashing", StringComparer.Ordinal)
+            ? DistractionReason.PointerFidget
             : DistractionReason.IdleReturn;
     }
 

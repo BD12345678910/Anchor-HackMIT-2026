@@ -33,7 +33,8 @@ public enum DistractionReason
     ReadingSkip,
     StuckPhrase,
     ScrollBurst,
-    GibberishTyping
+    GibberishTyping,
+    PointerFidget
 }
 
 public sealed record ContextObservation(
@@ -57,4 +58,5 @@ public sealed record ContextObservation(
     int KeyCount = 0,
     int ScrollReversalCount = 0,
     string? DocumentPosition = null,
-    bool IsScrollBurst = false);
+    bool IsScrollBurst = false,
+    bool IsPointerFidget = false);

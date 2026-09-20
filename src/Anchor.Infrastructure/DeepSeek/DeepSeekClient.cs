@@ -559,6 +559,12 @@ public sealed class DeepSeekClient : ITaskIntelligence
               right document: tell them to clear the stray characters and name the line/thought they were writing.
 
               """,
+            DistractionReason.PointerFidget => """
+              They drifted by fidgeting with the mouse — the cursor circling or clicking with nothing being read or
+              written — so the window is still the right one: name the exact spot they were working at and send the
+              pointer back to it.
+
+              """,
             _ => string.Empty
         };
         var prompt = $$"""

@@ -153,10 +153,24 @@ public sealed class AttentionStateMachine
             reasons.Add("scroll_loop");
         }
 
-        evidence += Math.Clamp(window.MouseDistance / 250, 0, 1) * 0.08;
-        if (window.MouseDistance >= 200)
+        // Distance on its own says nothing: dragging a window across two monitors covers more
+        // ground than any amount of fidgeting. What counts is travel that arrives nowhere, or a
+        // click rate no interface asks for, both of which the analyzer has to see for a few
+        // seconds before it reports them.
+        if (window.AimlessMouseSustained)
         {
+            evidence += 0.2;
             reasons.Add("pointer_wandering");
+        }
+        else
+        {
+            evidence += Math.Clamp(window.MouseDistance / 600, 0, 1) * 0.04;
+        }
+
+        if (window.MouseClickCount >= 12 && window.KeyCount < MouseBehaviorAnalyzer.TypingKeyCount)
+        {
+            evidence += 0.1;
+            reasons.Add("click_mashing");
         }
 
         if (window.GazeAvailable && window.GazeAwaySustained)

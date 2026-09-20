@@ -57,6 +57,20 @@ public static class LocalContextReminder
                 IsFallback: true);
         }
 
+        // Drifting with the cursor usually happens on the right window, so the reminder names the
+        // spot the pointer left rather than telling the user to come back to the app.
+        if (capsule.Reason == DistractionReason.PointerFidget)
+        {
+            return new ContextReminder(
+                $"Your pointer wandered off {document}",
+                focus is null
+                    ? $"You were part-way through {step} in {app}."
+                    : $"You were at {focus} in {document}.",
+                $"Put the cursor back where you left off and carry on with {step}.",
+                "Local recall",
+                IsFallback: true);
+        }
+
         var (headline, where) = capsule.Activity switch
         {
             ActivityKind.Reading => (

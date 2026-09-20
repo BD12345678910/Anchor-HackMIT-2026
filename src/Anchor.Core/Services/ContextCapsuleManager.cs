@@ -37,6 +37,13 @@ public sealed class ContextCapsuleManager
             return CreateCapsule(DistractionReason.ScrollBurst);
         }
 
+        // Same for fidgeting with the pointer: the anchor stays on the last screen the user was
+        // actually working on rather than wherever the cursor drifted to.
+        if (observation.IsPointerFidget && _lastConfidentObservation is not null)
+        {
+            return CreateCapsule(DistractionReason.PointerFidget);
+        }
+
         _lastConfidentObservation = observation with
         {
             Application = Bound(observation.Application, 120),

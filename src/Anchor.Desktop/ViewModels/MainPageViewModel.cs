@@ -1403,12 +1403,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     keyCount: raw.KeyCount,
                     scrollReversalCount: raw.ScrollReversalCount,
                     mouseDistance: raw.MouseDistance,
-                    isScrollBurst: _attentionFusion.LastScrollThrashSustained));
+                    isScrollBurst: _attentionFusion.LastScrollThrashSustained,
+                    isPointerFidget: _attentionFusion.LastAimlessMouseSustained));
                 _ = JudgeScreenProgressAsync(raw);
             }
+            // Fidgeting with the cursor is movement without work, so it does not count as progress.
             var progressObserved = raw.KeyCount > 0
-                || raw.MouseDistance >= 4
-                || raw.ScrollReversalCount > 0;
+                || raw.ScrollReversalCount > 0
+                || (raw.MouseDistance >= 4 && !_attentionFusion.LastAimlessMouseSustained);
             var activity = ActivityClassifier.Infer(
                 context.ProcessName,
                 context.WindowTitle,
@@ -1433,7 +1435,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 scrollNotchCount: raw.ScrollNotchCount,
                 navigationKeyCount: _services.Sensors.LastNavigationKeyCount,
                 activity: activity,
-                typedText: ResolveTypedText(activity, raw, visibleText)));
+                typedText: ResolveTypedText(activity, raw, visibleText),
+                mouseNetDistance: _services.Sensors.LastMouseNetDistance,
+                mouseDirectionChanges: _services.Sensors.LastMouseDirectionChanges,
+                mouseClickCount: _services.Sensors.LastMouseClickCount));
             var prediction = await _services.Orchestrator.ProcessAsync(fused.Window);
             await _services.Overlays.UpdateAttentionAsync(prediction);
             ApplyPrediction(prediction, AttentionAnalyzer.DescribePlace(context.ProcessName, context.Domain));
