@@ -24,6 +24,7 @@ public static class PictureRegionDetector
     private const double MinimumFill = 0.45;
     private const double MinimumSeedShare = 0.2;
     private const double FlatTintDeviation = 6;
+    private const double FlatToneShare = 0.5;
 
     internal enum BlockKind : byte
     {
@@ -74,6 +75,7 @@ public static class PictureRegionDetector
         var paperWhite = 0;
         long colourfulLuma = 0;
         long colourfulLumaSquares = 0;
+        Span<int> lumaBins = stackalloc int[64];
 
         for (var y = 0; y < BlockSize; y++)
         {
@@ -88,6 +90,7 @@ public static class PictureRegionDetector
                 chromaSum += chroma;
                 lumaSum += luma;
                 lumaSquares += luma * luma;
+                lumaBins[luma >> 2]++;
                 if (chroma >= 40)
                 {
                     colourful++;
@@ -114,6 +117,15 @@ public static class PictureRegionDetector
             colourfulDeviation = Math.Sqrt(Math.Max(0, colourfulLumaSquares / (double)colourful - mean * mean));
         }
 
+        // Text sits on one flat tone (paper, a tinted panel, a table header): half or more of the
+        // block is that single tone. A photograph spreads its pixels over many tones.
+        var dominantTone = 0;
+        foreach (var count in lumaBins)
+        {
+            dominantTone = Math.Max(dominantTone, count);
+        }
+
+        var flatToneShare = dominantTone / (double)pixels;
         var meanChroma = chromaSum / (double)pixels;
         var meanLuma = lumaSum / (double)pixels;
         var variance = lumaSquares / (double)pixels - meanLuma * meanLuma;
@@ -132,15 +144,18 @@ public static class PictureRegionDetector
         // Colour photos / illustrations: a real share of saturated pixels plus some texture. Dense
         // coloured text on paper (link lists, table cells) is colourful too, but keeps a large
         // paper-white share that photographs do not.
-        if (colourfulShare >= 0.35 && meanChroma >= 24 && paperShare < 0.3 && colourfulDeviation >= FlatTintDeviation)
+        if (flatToneShare < FlatToneShare)
         {
-            return BlockKind.Picture;
-        }
+            if (colourfulShare >= 0.35 && meanChroma >= 24 && paperShare < 0.3 && colourfulDeviation >= FlatTintDeviation)
+            {
+                return BlockKind.Picture;
+            }
 
-        // Greyscale or muted photos: lots of mid-tones with texture, unlike two-tone text.
-        if (midToneShare >= 0.6 && deviation >= 14)
-        {
-            return BlockKind.Picture;
+            // Greyscale or muted photos: lots of mid-tones with texture, unlike two-tone text.
+            if (midToneShare >= 0.6 && deviation >= 14)
+            {
+                return BlockKind.Picture;
+            }
         }
 
         // Gently textured, not mostly paper, and not the ink/paper contrast of text.

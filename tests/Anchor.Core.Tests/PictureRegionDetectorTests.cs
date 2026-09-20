@@ -17,6 +17,20 @@ public sealed class PictureRegionDetectorTests
     }
 
     [Fact]
+    public void Antialiased_links_on_a_tinted_navbox_are_not_a_picture()
+    {
+        var frame = new Frame { Antialiased = true };
+        frame.FillText(0, 0, Width, Height);
+        frame.FillSolid(16, 96, 288, 128, 204, 204, 255);
+        frame.FillText(48, 104, 224, 16, 10, 60, 160, dense: true, 204, 204, 255);
+        frame.FillText(48, 136, 224, 16, 20, 20, 20, dense: true, 204, 204, 255);
+        frame.FillText(48, 168, 224, 16, 10, 60, 160, dense: false, 204, 204, 255);
+        frame.FillText(48, 200, 224, 16, 10, 60, 160, dense: true, 204, 204, 255);
+
+        Assert.Empty(PictureRegionDetector.Detect(frame.Pixels, Width, Height, frame.Stride));
+    }
+
+    [Fact]
     public void Text_on_a_tinted_navbox_is_not_a_picture()
     {
         var frame = new Frame();
@@ -136,6 +150,10 @@ public sealed class PictureRegionDetectorTests
                     {
                         Set(xx, yy, r, g, b);
                     }
+                    else if (Antialiased && (xx % 4 is 2 || yy % 12 is 1 or 10))
+                    {
+                        Set(xx, yy, Mix(r, paperR), Mix(g, paperG), Mix(b, paperB));
+                    }
                     else
                     {
                         Set(xx, yy, paperR, paperG, paperB);
@@ -143,6 +161,11 @@ public sealed class PictureRegionDetectorTests
                 }
             }
         }
+
+        /// <summary>Blend half-tone edge pixels around glyph strokes, like ClearType/greyscale AA.</summary>
+        public bool Antialiased { get; init; }
+
+        private static byte Mix(byte ink, byte paper) => (byte)((ink + paper) / 2);
 
         /// <summary>Smoothly varying tones, like a photograph.</summary>
         public void FillPhoto(int x, int y, int w, int h, bool greyscale)
