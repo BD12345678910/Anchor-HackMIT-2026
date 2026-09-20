@@ -251,24 +251,31 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task SaveDeepSeekSettingsAsync()
     {
-        if (DeepSeekEnabled && string.IsNullOrWhiteSpace(DeepSeekApiKey))
-        {
-            DeepSeekStatus = "Enter a DeepSeek API key before enabling cloud intelligence.";
-            return;
-        }
-
         IsBusy = true;
         try
         {
+            var existing = await _services.DeepSeekSettings.LoadAsync();
+            var savedKey = string.IsNullOrWhiteSpace(DeepSeekApiKey)
+                ? existing?.ApiKey ?? string.Empty
+                : DeepSeekApiKey.Trim();
+            var environmentKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? string.Empty;
+            if (DeepSeekEnabled && savedKey.Length == 0 && string.IsNullOrWhiteSpace(environmentKey))
+            {
+                DeepSeekStatus = "Enter a DeepSeek API key (or set DEEPSEEK_API_KEY) before enabling cloud intelligence.";
+                return;
+            }
+
             await _services.DeepSeekSettings.SaveAsync(new DeepSeekSettings(
                 DeepSeekEnabled,
-                DeepSeekApiKey,
+                savedKey,
                 "deepseek-flash",
                 DeepSeekClient.DefaultEndpoint.ToString()));
             DeepSeekApiKey = string.Empty;
-            DeepSeekStatus = DeepSeekEnabled
-                ? "Active · deepseek-flash · key encrypted for this Windows account"
-                : "Disabled · local fallback only";
+            DeepSeekStatus = !DeepSeekEnabled
+                ? "Disabled · local fallback only"
+                : savedKey.Length > 0
+                    ? "Active · deepseek-flash · key encrypted for this Windows account"
+                    : "Active · deepseek-flash · using DEEPSEEK_API_KEY from the environment";
             if (_taskPlanner is not null && !IsRunning)
             {
                 _taskPlanner = null;
