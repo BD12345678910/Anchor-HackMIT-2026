@@ -454,6 +454,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         if (_taskPlanner?.Current?.Progress.PendingSuggestion is { } evidence)
         {
             _dismissedSuggestions.Add(evidence);
+            ApplyTaskPlanState(_taskPlanner.DismissSuggestion());
         }
         ClearSuggestion();
         StatusMessage = "Suggestion dismissed. Anchor will not ask about that window again for this step.";

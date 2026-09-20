@@ -83,6 +83,13 @@ public sealed class TaskSessionPlanner
 
     public TaskIntelligenceAvailability Availability => _intelligence.Availability;
 
+    public TaskSessionPlanState DismissSuggestion()
+    {
+        EnsurePlanned();
+        Current = CreateState(_manager.DismissSuggestion());
+        return Current;
+    }
+
     public TaskSessionPlanState ConfirmSuggestedCompletion(DateTimeOffset completedAt)
     {
         EnsurePlanned();

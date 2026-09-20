@@ -46,6 +46,12 @@ public sealed class TaskPlanManager
         return Snapshot();
     }
 
+    public TaskProgressSnapshot DismissSuggestion()
+    {
+        _pendingSuggestion = null;
+        return Snapshot();
+    }
+
     public TaskProgressSnapshot ConfirmSuggestedCompletion(DateTimeOffset completedAt)
     {
         if (_pendingSuggestion is null)
