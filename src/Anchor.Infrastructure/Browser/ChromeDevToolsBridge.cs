@@ -186,8 +186,7 @@ public sealed class ChromeDevToolsBridge : IDisposable
 
     /// <summary>
     /// Reads where the user is in the page in front of them — address, title and how far down they
-    /// have read — as the same messages the old extension sent, so context recovery keeps working
-    /// with nothing installed. Empty when no page is open.
+    /// have read — so context recovery keeps working with nothing installed. Empty when no page is open.
     /// </summary>
     public async Task<IReadOnlyList<string>> ReadPageContextAsync(CancellationToken cancellationToken = default)
     {
@@ -345,7 +344,7 @@ public sealed class ChromeDevToolsBridge : IDisposable
 
         private static string Build()
         {
-            var engine = Read("Anchor.Infrastructure.Browser.content-script.js");
+            var engine = Read("Anchor.Infrastructure.Browser.focus-engine.js");
             var agent = Read("Anchor.Infrastructure.Browser.page-agent.js");
             return $$"""
                 (() => {

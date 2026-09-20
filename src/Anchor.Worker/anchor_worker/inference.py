@@ -41,9 +41,8 @@ class AttentionInference:
             linear += 0.9
             reasons.append("off_task_window")
 
-        linear += min(features.idle_seconds, 30) * 0.055
-        if features.idle_seconds >= 5:
-            reasons.append("idle_pause")
+        # Stillness is not evidence of anything: reading, watching and thinking all look like an
+        # untouched keyboard and mouse. Only movement in excess of the work counts.
 
         linear += min(features.app_switch_count, 8) * 0.24
         if features.app_switch_count >= 3:
@@ -61,8 +60,9 @@ class AttentionInference:
         if self._stuck_windows >= 2:
             reasons.append("stuck_phrase")
 
-        linear += min(features.mouse_distance, 1_000) * 0.0012
-        if features.mouse_distance >= 250:
+        excess_motion = min(max(features.mouse_distance - 900.0, 0.0) / 900.0, 1.0)
+        linear += excess_motion * excess_motion * 0.9
+        if excess_motion >= 0.5:
             reasons.append("pointer_wandering")
 
         gaze_away = features.gaze_available and features.gaze_presence < 0.35

@@ -1,8 +1,7 @@
 /**
- * Drives the page edits from the desktop app instead of from a browser extension.
+ * Drives the page edits from the desktop app: nothing is installed in the browser.
  *
- * Anchor injects `content-script.js` (which exports the editing engine and does nothing on its own
- * without `chrome.runtime`) and then this file through the DevTools protocol, and calls
+ * Anchor injects `focus-engine.js` and then this file through the DevTools protocol, and calls
  * `AnchorPageAgent.apply(state)` whenever the toolkit state changes. Everything it does is
  * reversible through `AnchorPageAgent.clear()`, and a debounced MutationObserver re-applies the
  * edits to content the page loads later.
@@ -38,7 +37,7 @@
     return root ?? globalScope.document;
   }
 
-  /** Pages with a password or payment field are never touched, extension or not. */
+  /** Pages with a password or payment field are never touched. */
   function isProtected(root) {
     const page = documentOf(root);
     if (!page?.querySelector) return true;
@@ -91,6 +90,7 @@
     const page = documentOf(root);
     if (isProtected(page)) return { applied: false, reason: "protected-page" };
     const wanted = { ...DEFAULT_STATE, ...next };
+    engine().injectStyles?.();
     const previous = state;
     state = wanted;
     const focus = engine();

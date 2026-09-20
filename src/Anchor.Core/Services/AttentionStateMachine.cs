@@ -131,14 +131,14 @@ public sealed class AttentionStateMachine
             reasons.Add("off_task_window");
         }
 
-        // Writing and coding happen in the head as much as on the keyboard: a still mouse and a
-        // quiet keyboard are how thinking looks, so those activities get a much longer grace
-        // period before stillness counts as evidence of anything.
-        var idleBeyondThinking = Math.Max(0, window.IdleSeconds - ThinkingTolerance(window.Activity));
-        evidence += Math.Clamp(idleBeyondThinking / 15, 0, 1) * 0.16;
-        if (idleBeyondThinking >= 5)
+        // Stillness is not evidence. Someone reading a difficult page, watching a lecture or
+        // thinking through a proof produces no input at all, and that is what focus looks like.
+        // Long stillness is only reported once another signal already says the person is gone.
+        if (window.IdleSeconds >= UnattendedSeconds
+            && window.GazeAvailable
+            && window.GazePresence < 0.2)
         {
-            reasons.Add("idle_pause");
+            reasons.Add("away_from_screen");
         }
 
         evidence += Math.Clamp(window.AppSwitchCount / 4d, 0, 1) * 0.14;
@@ -154,17 +154,17 @@ public sealed class AttentionStateMachine
         }
 
         // Distance on its own says nothing: dragging a window across two monitors covers more
-        // ground than any amount of fidgeting. What counts is travel that arrives nowhere, or a
-        // click rate no interface asks for, both of which the analyzer has to see for a few
-        // seconds before it reports them.
+        // ground than any amount of fidgeting. What counts is travel that arrives nowhere, seen
+        // for a few seconds, and sheer excess of it — never its absence.
+        var excessMotion = Math.Clamp((window.MouseDistance - RestlessMousePixels) / RestlessMousePixels, 0, 1);
         if (window.AimlessMouseSustained)
         {
-            evidence += 0.2;
+            evidence += 0.2 + (excessMotion * 0.1);
             reasons.Add("pointer_wandering");
         }
         else
         {
-            evidence += Math.Clamp(window.MouseDistance / 600, 0, 1) * 0.04;
+            evidence += excessMotion * excessMotion * 0.12;
         }
 
         if (window.MouseClickCount >= 12 && window.KeyCount < MouseBehaviorAnalyzer.TypingKeyCount)
@@ -207,6 +207,12 @@ public sealed class AttentionStateMachine
 
         return Math.Clamp(evidence, 0, 1);
     }
+
+    /// <summary>Pointer travel a window of ordinary work stays under.</summary>
+    private const double RestlessMousePixels = 900;
+
+    /// <summary>Stillness long enough to be worth naming, once gaze agrees nobody is there.</summary>
+    private const double UnattendedSeconds = 120;
 
     /// <summary>Seconds of stillness that mean nothing for this kind of work.</summary>
     public static double ThinkingTolerance(ActivityKind activity) => activity switch

@@ -67,24 +67,7 @@ public class TypingQualityTests
     }
 
     [Fact]
-    public void The_same_pause_while_browsing_still_counts()
-    {
-        var machine = AttentionStateMachine.CreateDefault();
-
-        var prediction = machine.Update(SensorWindow.Create(
-            keyCount: 0,
-            mouseDistance: 0,
-            idleSeconds: 25,
-            appRelevance: 0.9,
-            progressObserved: false,
-            noProgressSustained: true,
-            activity: ActivityKind.Browsing));
-
-        Assert.Contains("idle_pause", prediction.ReasonCodes);
-    }
-
-    [Fact]
-    public void A_long_enough_pause_while_coding_is_still_noticed()
+    public void Reading_without_touching_anything_is_still_reading()
     {
         var machine = AttentionStateMachine.CreateDefault();
 
@@ -93,9 +76,27 @@ public class TypingQualityTests
             mouseDistance: 0,
             idleSeconds: 90,
             appRelevance: 0.9,
-            activity: ActivityKind.Writing));
+            activity: ActivityKind.Reading));
 
-        Assert.Contains("idle_pause", prediction.ReasonCodes);
+        Assert.DoesNotContain("idle_pause", prediction.ReasonCodes);
+        Assert.Equal(AttentionState.Focused, prediction.State);
+    }
+
+    [Fact]
+    public void An_empty_seat_is_named_only_when_the_camera_agrees()
+    {
+        var machine = AttentionStateMachine.CreateDefault();
+
+        var prediction = machine.Update(SensorWindow.Create(
+            keyCount: 0,
+            mouseDistance: 0,
+            idleSeconds: 300,
+            appRelevance: 0.9,
+            gazeAvailable: true,
+            gazePresence: 0,
+            activity: ActivityKind.Reading));
+
+        Assert.Contains("away_from_screen", prediction.ReasonCodes);
     }
 
     [Fact]

@@ -1,8 +1,12 @@
+/**
+ * The page editing engine Anchor injects over the DevTools protocol: picture downscaling,
+ * off-task block removal, sentence rewriting and animation suppression, each reversible.
+ * It touches nothing on its own; `page-agent.js` drives it.
+ */
 (function initializeAnchorFocus(globalScope, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   globalScope.AnchorFocusEngine = api;
-  if (typeof document !== "undefined" && typeof chrome !== "undefined" && chrome.runtime) api.boot();
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAnchorFocusEngine() {
   const MASK_CLASS = "anchor-future-mask";
   const FILTERED_ATTRIBUTE = "anchorFiltered";
@@ -408,123 +412,6 @@
     document.documentElement.appendChild(style);
   }
 
-  function boot() {
-    if (globalScope.__anchorFocusBooted) return;
-    globalScope.__anchorFocusBooted = true;
-    const signals = {
-      hasPassword: Boolean(document.querySelector("input[type='password']")),
-      hasPayment: Boolean(document.querySelector("[autocomplete^='cc-'], input[name*='card' i]")),
-    };
-    if (isProtectedPage(location.href, signals)) return;
-    injectStyles();
-    const tracker = createReadingTracker((event) => chrome.runtime.sendMessage({ source: "anchor-content", event }));
-    let settings = {
-      imageBlur: true,
-      threshold: DEFAULT_THRESHOLD,
-      futureTextMask: false,
-      lookahead: 1,
-      suppressAnimations: false,
-      clutterRemoval: false,
-      clutterSelectors: [],
-      taskKeywords: [],
-      simplifyText: false,
-      maxWords: DEFAULT_MAX_WORDS,
-      rewriteImageSource: true,
-    };
-    let currentParagraph = 0;
-    let lastProgressSentAt = 0;
-
-    const apply = () => {
-      if (settings.imageBlur) {
-        applyImageFiltering(document, { threshold: settings.threshold, rewriteSource: settings.rewriteImageSource });
-      }
-      if (settings.futureTextMask) maskFutureText(document, currentParagraph, settings);
-      if (settings.clutterRemoval) {
-        removeOffTaskElements(document, { selectors: settings.clutterSelectors, keywords: settings.taskKeywords });
-      }
-      if (settings.simplifyText) {
-        rewriteSentences(document, { keywords: settings.taskKeywords, maxWords: settings.maxWords });
-      }
-      applyAnimationSuppression(document, settings.suppressAnimations);
-    };
-    let mutationTimer = null;
-    const observer = new MutationObserver(() => {
-      clearTimeout(mutationTimer);
-      mutationTimer = setTimeout(apply, 80);
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-    addEventListener("scroll", () => {
-      const maximum = Math.max(1, document.documentElement.scrollHeight - innerHeight);
-      tracker.observeProgress(scrollY / maximum);
-      const paragraphs = paragraphCandidates(document);
-      const index = paragraphs.findIndex((item) => item.getBoundingClientRect().bottom > innerHeight * 0.45);
-      currentParagraph = index < 0 ? Math.max(0, paragraphs.length - 1) : index;
-      const now = Date.now();
-      if (now - lastProgressSentAt >= 250) {
-        lastProgressSentAt = now;
-        chrome.runtime.sendMessage({
-          source: "anchor-content",
-          event: { type: "reading-progress", progress: scrollY / maximum, paragraphIndex: currentParagraph, timestamp: now },
-        });
-      }
-      if (settings.futureTextMask) maskFutureText(document, currentParagraph, settings);
-    }, { passive: true });
-    addEventListener("pointerover", (event) => {
-      const text = event.target?.textContent?.trim();
-      if (text && text.length <= 180) tracker.observePhrase(text);
-    }, { passive: true });
-
-    chrome.runtime.onMessage.addListener((message, _sender, respond) => {
-      if (message?.command === "setVisualFilter") {
-        settings = { ...settings, imageBlur: message.enabled !== false, threshold: message.threshold ?? settings.threshold };
-        if (settings.imageBlur) {
-          apply();
-        } else {
-          clearImageFilters(document);
-          restorePixelatedImages(document);
-        }
-      } else if (message?.command === "setFutureTextMask") {
-        settings = { ...settings, futureTextMask: Boolean(message.enabled), lookahead: message.lookahead ?? settings.lookahead };
-        if (settings.futureTextMask) apply(); else clearFutureTextMasks(document);
-      } else if (message?.command === "setClutterRemoval") {
-        settings = {
-          ...settings,
-          clutterRemoval: Boolean(message.enabled),
-          clutterSelectors: message.selectors ?? settings.clutterSelectors,
-          taskKeywords: message.keywords ?? settings.taskKeywords,
-        };
-        if (settings.clutterRemoval) apply(); else restoreRemovedElements(document);
-      } else if (message?.command === "setTextSimplification") {
-        settings = {
-          ...settings,
-          simplifyText: Boolean(message.enabled),
-          maxWords: message.maxWords ?? settings.maxWords,
-          taskKeywords: message.keywords ?? settings.taskKeywords,
-        };
-        if (settings.simplifyText) apply(); else restoreRewrittenText(document);
-      } else if (message?.command === "setAnimationSuppression") {
-        settings = { ...settings, suppressAnimations: Boolean(message.enabled) };
-        applyAnimationSuppression(document, settings.suppressAnimations);
-      } else if (message?.command === "clearInterventions") {
-        clearInterventions(document);
-      } else if (message?.command === "showRecoveryAnchor") {
-        const paragraphs = paragraphCandidates(document);
-        const anchor = paragraphs[Math.max(0, Math.min(paragraphs.length - 1, message.paragraphIndex ?? currentParagraph))];
-        anchor?.classList.add("anchor-recovery-anchor");
-        anchor?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      }
-      respond?.({ ok: true, tracker: tracker.snapshot(), capabilities: ["imageBlur", "futureTextMask", "animationSuppression", "clutterRemoval", "textSimplification", "recoveryAnchor"] });
-    });
-    chrome.storage.sync.get(["imageBlur", "threshold", "futureTextMask", "lookahead", "suppressAnimations", "clutterRemoval", "simplifyText", "maxWords"], (saved) => {
-      settings = { ...settings, ...saved };
-      apply();
-    });
-    chrome.runtime.sendMessage({
-      source: "anchor-content",
-      event: { type: "page-context", origin: location.origin, title: document.title.slice(0, 240) },
-    });
-  }
-
   return {
     classifyImage,
     isProtectedPage,
@@ -543,6 +430,6 @@
     applyAnimationSuppression,
     clearInterventions,
     createReadingTracker,
-    boot,
+    injectStyles,
   };
 });
