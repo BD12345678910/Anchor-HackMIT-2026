@@ -354,6 +354,24 @@
                             </Grid>
                             <Border Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="12">
+                                    <TextBlock Text="Attention analysis" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="Computed from this session's timeline: how long you stay on task before drifting, how fast you come back, and what pulls you away." Style="{StaticResource Hint}" />
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Border Padding="12" CornerRadius="12" Background="#241C2941">
+                                            <StackPanel><TextBlock Text="Attention span (median / longest)" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.AttentionSpan, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
+                                        </Border>
+                                        <Border Grid.Column="1" Padding="12" CornerRadius="12" Background="#241C2941">
+                                            <StackPanel><TextBlock Text="Distractions / hour · median recovery" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.DistractionRate, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
+                                        </Border>
+                                        <Border Grid.Column="2" Padding="12" CornerRadius="12" Background="#241C2941">
+                                            <StackPanel><TextBlock Text="Time on task" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.OnTaskShare, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <TextBlock Text="{x:Bind ViewModel.Analytics.Triggers, Mode=OneWay}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind ViewModel.Analytics.Interventions, Mode=OneWay}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind ViewModel.Analytics.Trend, Mode=OneWay}" TextWrapping="Wrap" Foreground="#AFC1FF" />
+                                    <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                                     <TextBlock Text="Session timeline" Style="{StaticResource CardTitle}" />
                                     <TextBlock Text="State changes, interventions, progress you logged, and evidence Anchor spotted." Style="{StaticResource Hint}" />
                                     <ListView ItemsSource="{x:Bind ViewModel.Timeline, Mode=OneWay}" MaxHeight="420" SelectionMode="None">
@@ -419,13 +437,12 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel Spacing="10">
-                                <TextBlock Text="DeepSeek intelligence (default when a key is present)" Style="{StaticResource CardTitle}" />
-                                <TextBlock Text="DeepSeek (deepseek-flash) plans the goal, judges window relevance, decides from on-device OCR text whether the current step is finished, and phrases the 'where you were' reminder for the activity you were doing. Only bounded, redacted text is sent — never screenshots or the camera feed. Without a key every one of these falls back to local rules and is labelled as such."
+                                <TextBlock Text="DeepSeek intelligence" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="DeepSeek (deepseek-flash) plans the goal, judges window relevance, decides from on-device OCR text whether the current step is finished, and phrases the 'where you were' reminder for the activity you were doing. It is always on once a key is saved; local rules are only the fallback when there is no key or the API is unreachable, and every fallback result is labelled 'Local rules'. Only bounded, redacted text is sent — never screenshots or the camera feed."
                                            Style="{StaticResource Hint}" />
-                                <ToggleSwitch Header="Use DeepSeek for plans, relevance, screen progress and reminders" IsOn="{x:Bind ViewModel.DeepSeekEnabled, Mode=TwoWay}" />
-                                <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="Stored encrypted for this Windows account"
+                                <PasswordBox x:Name="DeepSeekKeyBox" Header="API key" PlaceholderText="sk-… (stored encrypted for this Windows account)"
                                              PasswordChanged="DeepSeekKeyBox_PasswordChanged" />
-                                <Button Content="Save DeepSeek settings" HorizontalAlignment="Left" Command="{x:Bind ViewModel.SaveDeepSeekSettingsCommand}" />
+                                <Button Content="Save API key" HorizontalAlignment="Left" Command="{x:Bind ViewModel.SaveDeepSeekSettingsCommand}" />
                                 <TextBlock Text="{x:Bind ViewModel.DeepSeekStatus, Mode=OneWay}" Style="{StaticResource Hint}" />
                             </StackPanel>
                         </Border>

@@ -54,7 +54,13 @@ public sealed record ProgressEvidence(
     string WindowTitle,
     string ScreenText,
     ActivityKind Activity,
-    IReadOnlyList<string> RecentlyCompletedEvidence);
+    IReadOnlyList<string> RecentlyCompletedEvidence,
+    IReadOnlyList<string>? ScreenTrail = null,
+    TimeSpan TimeOnStep = default)
+{
+    /// <summary>Headings/first lines of the screens seen since the step became active, oldest first.</summary>
+    public IReadOnlyList<string> Trail => ScreenTrail ?? [];
+}
 
 public sealed record ProgressJudgment(
     bool StepCompleted,

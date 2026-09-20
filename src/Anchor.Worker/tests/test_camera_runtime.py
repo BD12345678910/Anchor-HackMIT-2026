@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import numpy as np
+
 from anchor_worker.camera import (
     CameraDeviceProbe,
     CameraGazeTracker,
@@ -24,12 +26,22 @@ class _Detector:
 
 
 class _Capture:
-    def __init__(self, opened):
+    def __init__(self, opened, frames=True):
         self._opened = opened
+        self._frames = frames
         self.released = False
 
     def isOpened(self):
         return self._opened
+
+    def read(self):
+        if not self._frames:
+            return False, None
+        return True, np.zeros((2, 2, 3), dtype=np.uint8)
+
+    def get(self, prop):
+        del prop
+        return 640
 
     def release(self):
         self.released = True
@@ -79,6 +91,27 @@ def test_camera_probe_falls_back_to_media_foundation_when_directshow_fails():
 
     assert [(item.index, item.name) for item in devices] == [(0, "Camera 1")]
     assert cv2.backends == [cv2.CAP_DSHOW, cv2.CAP_MSMF]
+
+
+def test_camera_probe_skips_devices_that_open_but_never_deliver_frames():
+    class _StuckCv2:
+        CAP_DSHOW = 700
+        CAP_MSMF = 1400
+        CAP_ANY = 0
+        CAP_PROP_FRAME_WIDTH = 3
+        CAP_PROP_FRAME_HEIGHT = 4
+
+        def VideoCapture(self, index, backend):
+            del backend
+            return _Capture(opened=index == 0, frames=False)
+
+    cv2 = _StuckCv2()
+
+    assert CameraDeviceProbe.list_devices(cv2, max_index=1) == []
+    report = CameraDeviceProbe.diagnose(cv2, max_index=1)
+    assert [entry["backend"] for entry in report] == ["CAP_DSHOW", "CAP_MSMF", "CAP_ANY"]
+    assert all(entry["opened"] and not entry["frames"] for entry in report)
+    assert report[0]["error"] == "opened but no frames"
 
 
 def test_gaze_settings_round_trip_all_user_adjustable_parameters(tmp_path):

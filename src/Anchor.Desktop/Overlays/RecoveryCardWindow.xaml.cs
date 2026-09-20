@@ -66,17 +66,28 @@ public sealed partial class RecoveryCardWindow : Window
     }
 
     /// <summary>Shows the activity-specific reminder (DeepSeek or local recall) built from the frozen capsule.</summary>
-    public void SetReminder(ContextReminder reminder, ActivityKind activity)
+    public void SetReminder(ContextReminder reminder, ActivityKind activity, FocusSource focusSource)
     {
         _reminder = reminder;
         HeadlineText.Text = string.IsNullOrWhiteSpace(reminder.Headline) ? "Let's restore your place" : reminder.Headline;
         ActivityText.Text = $"WHERE YOU WERE · {ActivityClassifier.Describe(activity).ToUpperInvariant()}";
         WhereText.Text = reminder.WhereYouWere;
         ResumeText.Text = string.IsNullOrWhiteSpace(reminder.ResumeWith) ? string.Empty : $"Resume with: {reminder.ResumeWith}";
-        ReminderSourceText.Text = reminder.IsFallback
+        ReminderSourceText.Text = (reminder.IsFallback
             ? $"{reminder.Source} · deterministic, on-device"
-            : $"{reminder.Source} · phrased from on-device OCR + task plan, nothing else was sent";
+            : $"{reminder.Source} · phrased from on-device OCR + task plan, nothing else was sent")
+            + " · " + DescribeAnchor(focusSource);
     }
+
+    /// <summary>Says truthfully how the line was picked: eye tracking only when the camera was actually open.</summary>
+    public static string DescribeAnchor(FocusSource source) => source switch
+    {
+        FocusSource.Gaze => "line anchored by gaze (camera on)",
+        FocusSource.Caret => "camera not open · line anchored by the text cursor",
+        FocusSource.Pointer => "camera not open · line anchored by the mouse pointer",
+        FocusSource.Viewport => "camera not open · line anchored by the visible viewport",
+        _ => "camera not open · no on-screen line anchor"
+    };
 
     public void SetReminderPending(string message)
     {

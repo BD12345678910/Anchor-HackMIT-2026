@@ -6,11 +6,11 @@ Anchor is assistive software, not a diagnostic tool or medical device. Its atten
 
 ## Release quick start
 
-The generated portable release is `release/Anchor-win-x64`.
+Download `Anchor-win-x64.zip` from the GitHub Releases page (or build it with `scripts\build.ps1`, which writes `release/Anchor-win-x64`), extract it anywhere, and:
 
 1. Run `Anchor.exe`. No Python or .NET installation is required.
-2. In **DeepSeek intelligence**, optionally enter an API key, enable DeepSeek, and save. Without it, Anchor uses a clearly labeled local fallback plan and relevance model.
-3. In **Test Gaze**, select **Find cameras**, choose a camera, select **Start**, tune mirror/rotation/offset/smoothing/sensitivity, and complete the nine-point calibration if needed.
+2. In **DeepSeek intelligence**, enter an API key and save. DeepSeek then becomes the default planner, screen-progress judge, and reminder writer (there is no separate on/off switch); without a key Anchor uses a clearly labeled local fallback.
+3. In **Test Gaze**, select **Find cameras**, choose a camera, select **Start**, tune mirror/rotation/offset/smoothing/sensitivity, and complete the nine-point calibration if needed. If no camera is listed, run `camera-check.ps1` from the extracted folder: it reports what Windows, the camera privacy switches, and Anchor's OpenCV worker each see, and which app currently holds the device.
 4. Enter a goal, select **Plan goal**, review the subtasks, and select **Start focus session**.
 5. Closing Settings hides it; Anchor keeps running from its stationary notification-area icon. Use `Ctrl+Shift+A` to reopen Settings.
 

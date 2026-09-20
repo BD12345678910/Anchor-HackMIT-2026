@@ -105,6 +105,46 @@ public static class ScreenSnapshotAnalyzer
         return builder.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// One-line summary of a screen for the reading trail: heading-like lines (short, taller than
+    /// the median line) plus the top and bottom body lines, so a judge can see how far the user
+    /// scrolled through a section over successive screens.
+    /// </summary>
+    public static string TrailEntry(IReadOnlyList<ScreenLine> lines, int maxChars = 160)
+    {
+        var texts = lines.Where(static line => line.Text.Trim().Length >= 2).ToArray();
+        if (texts.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var medianHeight = texts.Select(static line => line.Height).Order().ElementAt(texts.Length / 2);
+        var headings = texts
+            .Where(line => IsHeadingLike(line, medianHeight))
+            .Select(static line => line.Text.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToArray();
+        var body = $"top \u201c{Clip(texts[0].Text.Trim(), 45)}\u201d \u2026 bottom \u201c{Clip(texts[^1].Text.Trim(), 45)}\u201d";
+        var entry = headings.Length == 0 ? body : $"headings: {string.Join(" / ", headings)} · {body}";
+        return Clip(entry, maxChars);
+    }
+
+    private static bool IsHeadingLike(ScreenLine line, double medianHeight)
+    {
+        var text = line.Text.Trim();
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length is >= 1 and <= 6
+            && text.Length <= 48
+            && !text.EndsWith('.')
+            && !text.EndsWith(',')
+            && char.IsLetter(text[0])
+            && line.Height >= medianHeight * 1.25;
+    }
+
+    private static string Clip(string value, int length) =>
+        value.Length <= length ? value : value[..(length - 1)].TrimEnd() + "\u2026";
+
     private static string BuildExcerpt(ScreenLine[] lines, int focusIndex)
     {
         if (lines.Length == 0)

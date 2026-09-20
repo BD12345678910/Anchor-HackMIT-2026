@@ -97,6 +97,52 @@ public sealed class ScreenContextTests
     }
 
     [Fact]
+    public void LocalProgressJudge_treats_read_through_reading_steps_as_done()
+    {
+        var read = new TaskStep("r1", "Read the Taxonomy section of the Cat article", "Taxonomy section read");
+        var trail = new[]
+        {
+            "headings: Taxonomy · top “Taxonomy” … bottom “The scientific name Felis catus”",
+            "top “was proposed by Carl Linnaeus” … bottom “Felis silvestris catus”",
+            "headings: Evolution · top “In 2003 the ICZN” … bottom “Evolution”"
+        };
+        var evidence = new ProgressEvidence(
+            "read the Cat Wikipedia article", [read], 0, read,
+            "chrome", "Cat - Wikipedia", "Evolution\nThe domestic cat is a member of the Felidae",
+            ActivityKind.Reading, [], trail, TimeSpan.FromSeconds(60));
+
+        var judgment = LocalProgressJudge.Judge(evidence);
+
+        Assert.True(judgment.StepCompleted);
+        Assert.True(judgment.IsFallback);
+        Assert.True(judgment.Confidence >= ProgressJudgment.SuggestThreshold);
+        Assert.True(judgment.Confidence < ProgressJudgment.AutoCompleteThreshold);
+        Assert.False(LocalProgressJudge.Judge(evidence with { ScreenTrail = trail[..1] }).StepCompleted);
+        Assert.False(LocalProgressJudge.Judge(evidence with { TimeOnStep = TimeSpan.FromSeconds(10) }).StepCompleted);
+    }
+
+    [Fact]
+    public void TrailEntry_lists_headings_and_scroll_extent()
+    {
+        var lines = new List<ScreenLine>
+        {
+            new("Taxonomy", 10, 10, 200, 30),
+            new("The scientific name Felis catus was proposed by Carl Linnaeus in 1758.", 10, 60, 700, 16),
+            new("It was published in the tenth edition of Systema Naturae.", 10, 80, 700, 16),
+            new("Evolution", 10, 120, 200, 30),
+            new("The domestic cat is a member of the Felidae.", 10, 160, 700, 16)
+        };
+
+        var entry = ScreenSnapshotAnalyzer.TrailEntry(lines);
+
+        Assert.Contains("headings: Taxonomy / Evolution", entry);
+        Assert.Contains("top “Taxonomy”", entry);
+        Assert.Contains("bottom “The domestic cat", entry);
+        Assert.True(entry.Length <= 160);
+        Assert.Equal(string.Empty, ScreenSnapshotAnalyzer.TrailEntry([]));
+    }
+
+    [Fact]
     public void LocalContextReminder_varies_with_activity()
     {
         var reading = Capsule(ActivityKind.Reading, FocusSource.Gaze, "The mitochondria is the powerhouse of the cell.");

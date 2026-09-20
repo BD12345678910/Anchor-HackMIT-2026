@@ -123,7 +123,11 @@ public sealed class DeepSeekClient : ITaskIntelligence
         var prompt = $$"""
             Return JSON with this exact shape:
             {"score":0.0,"classification":"relevant|ambiguous|likely_detour","reason":"one short sentence"}
-            Judge whether the current context supports the active step. Do not infer private content not provided.
+            Judge whether the current context supports the active step or the overall goal. Pages on the same subject
+            (the article being studied, its sections, sub-articles, linked references, a search for it, the same problem
+            site) are relevant even if they do not match the active step word for word; only content clearly unrelated
+            to the goal (entertainment, social feeds, shopping, unrelated topics) is a likely_detour. Prefer
+            "ambiguous" over "likely_detour" when the title alone cannot tell. Do not infer private content not provided.
             Goal: {{Bound(context.Goal, 240)}}
             Active step: {{Bound(context.CurrentSubtask, 240)}}
             Process: {{Bound(context.ProcessName, 120)}}
@@ -216,18 +220,25 @@ public sealed class DeepSeekClient : ITaskIntelligence
             Return JSON with this exact shape:
             {"stepCompleted":false,"confidence":0.0,"evidence":"one short sentence quoting what on screen proves it"}
             You watch a student's screen to detect progress on a study plan. Decide ONLY whether the ACTIVE step's
-            completion criterion is visibly satisfied by the screen text below (an accepted verdict, a submitted answer,
-            a finished document, a reached page). Being on the right page is NOT completion. If unsure, stepCompleted=false
-            with a low confidence. Never invent text that is not on screen.
+            completion criterion is visibly satisfied (an accepted verdict, a submitted answer, a finished document,
+            a reached page, a section read through). For "read/study/review X" steps the screen cannot show
+            comprehension, so use the screen trail: the step is done (confidence >= 0.85) once the trail shows the
+            student moved through the section from its start to its end (the section heading appeared earlier and the
+            current screen shows the following heading or the section's final paragraphs), or when they have dwelt on
+            the section for a duration plausible for reading it. A first glance at the section's opening is NOT
+            completion. If unsure, stepCompleted=false with a low confidence. Never invent text that is not on screen.
             Goal: {{Bound(evidence.Goal, 240)}}
             Plan:
             {{steps}}
             ACTIVE step: {{Bound(evidence.CurrentStep.Title, 200)}} — done when: {{Bound(evidence.CurrentStep.CompletionCriterion, 200)}}
+            Time spent on the active step in task-relevant windows: {{Math.Round(evidence.TimeOnStep.TotalSeconds)}} s
             Activity: {{ActivityClassifier.Describe(evidence.Activity)}}
             Process: {{Bound(evidence.ProcessName, 120)}}
             Window: {{Bound(evidence.WindowTitle, 240)}}
             Already used as evidence for earlier steps (do not count again): {{string.Join(" | ", evidence.RecentlyCompletedEvidence.Select(item => Bound(item, 160)))}}
-            Screen text (OCR, top to bottom):
+            Screen trail since the step became active (oldest first, one line per screen seen):
+            {{Bound(string.Join('\n', evidence.Trail.Select(item => "- " + Bound(item, 160))), 1_500)}}
+            Screen text now (OCR, top to bottom):
             {{Bound(evidence.ScreenText, 3_000)}}
             """;
         var response = await CompleteAsync(prompt, cancellationToken);

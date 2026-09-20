@@ -23,6 +23,9 @@ public static class LocalProgressJudge
         "try again", "failed", "0/", "not accepted"
     ];
 
+    public const int ReadThroughScreens = 3;
+    public static readonly TimeSpan ReadThroughDwell = TimeSpan.FromSeconds(45);
+
     public static ProgressJudgment Judge(ProgressEvidence evidence)
     {
         ArgumentNullException.ThrowIfNull(evidence);
@@ -42,6 +45,21 @@ public static class LocalProgressJudge
                 true,
                 Math.Min(ProgressJudgment.AutoCompleteThreshold - 0.05, 0.45 + match.Score * 0.5),
                 $"Screen shows \"{marker}\" while on {evidence.WindowTitle}.",
+                true,
+                "Local rules");
+        }
+
+        var readThrough = evidence.Activity is ActivityKind.Reading or ActivityKind.Browsing
+            && evidence.Trail.Count >= ReadThroughScreens
+            && evidence.TimeOnStep >= ReadThroughDwell
+            ? TaskEvidenceMatcher.Evaluate(evidence.CurrentStep, evidence.Goal, $"{combined}\n{string.Join('\n', evidence.Trail)}")
+            : null;
+        if (readThrough is { SuggestsCompletion: true })
+        {
+            return new ProgressJudgment(
+                true,
+                Math.Min(ProgressJudgment.AutoCompleteThreshold - 0.05, 0.5 + readThrough.Score * 0.4),
+                $"Scrolled through {evidence.Trail.Count} screens of \"{evidence.WindowTitle}\" over {Math.Round(evidence.TimeOnStep.TotalSeconds)} s.",
                 true,
                 "Local rules");
         }

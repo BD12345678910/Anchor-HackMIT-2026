@@ -54,6 +54,7 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
     private InferenceWorker.InferenceWorkerClient? _client;
     private Metadata? _headers;
     private bool _disposed;
+    private int _cameraProbesInFlight;
 
     public InferenceWorkerClient(InferenceWorkerOptions options)
     {
@@ -118,8 +119,11 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(window);
 
-        if (Mode != WorkerMode.Available || _client is null || _headers is null)
+        if (Mode != WorkerMode.Available || _client is null || _headers is null
+            || Volatile.Read(ref _cameraProbesInFlight) > 0)
         {
+            // A camera probe can block the worker for many seconds; predicting locally meanwhile
+            // keeps a slow probe from being mistaken for a dead worker.
             return Fallback(window);
         }
 
@@ -181,20 +185,33 @@ public sealed class InferenceWorkerClient : IAsyncDisposable
         }
 
         var probeDeadline = _options.RpcDeadline < CameraProbeDeadline ? CameraProbeDeadline : _options.RpcDeadline;
-        var call = _client.ListCamerasAsync(
-            new ListCamerasRequest(),
-            _headers,
-            DateTime.UtcNow + probeDeadline,
-            cancellationToken);
-        var reply = await call.ResponseAsync;
-        if (reply.Unavailable is { } unavailable)
+        Interlocked.Increment(ref _cameraProbesInFlight);
+        try
         {
-            throw new InvalidOperationException(unavailable.Reason);
-        }
+            var call = _client.ListCamerasAsync(
+                new ListCamerasRequest(),
+                _headers,
+                DateTime.UtcNow + probeDeadline,
+                cancellationToken);
+            var reply = await call.ResponseAsync;
+            if (reply.Unavailable is { } unavailable)
+            {
+                throw new InvalidOperationException(unavailable.Reason);
+            }
 
-        return reply.Devices
-            .Select(static item => new CameraDevice(checked((int)item.Index), item.Name))
-            .ToArray();
+            return reply.Devices
+                .Select(static item => new CameraDevice(checked((int)item.Index), item.Name))
+                .ToArray();
+        }
+        catch (RpcException error) when (error.StatusCode == StatusCode.DeadlineExceeded)
+        {
+            throw new InvalidOperationException(
+                $"the camera probe took longer than {probeDeadline.TotalSeconds:0} s", error);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _cameraProbesInFlight);
+        }
     }
 
     public async Task<GazeConfigurationResult> ConfigureGazeAsync(

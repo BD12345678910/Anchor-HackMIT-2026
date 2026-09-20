@@ -54,7 +54,7 @@ public static class TaskEvidenceMatcher
         return new TaskEvidenceMatch(Math.Clamp(score, 0, 1), matched);
     }
 
-    private static bool SharesStem(string left, string right)
+    internal static bool SharesStem(string left, string right)
     {
         if (left.Length < 4 || right.Length < 4)
         {
@@ -73,7 +73,7 @@ public static class TaskEvidenceMatcher
     private static bool LooksLikeIdentifier(string token) =>
         token.Any(char.IsDigit) && token.Any(char.IsLetter);
 
-    private static HashSet<string> Tokenize(string? value)
+    internal static HashSet<string> Tokenize(string? value)
     {
         var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(value))

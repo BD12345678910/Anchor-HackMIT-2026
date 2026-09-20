@@ -36,27 +36,90 @@ class FaceLandmarkDetector(Protocol):
 class CameraDeviceProbe:
     @staticmethod
     def list_devices(cv2_module: Any, max_index: int = 8) -> list[CameraDevice]:
+        """Probes indices in order and stops after `EMPTY_INDEX_LIMIT` consecutive indices
+        that no backend can even open, since Windows numbers cameras contiguously. This keeps
+        the probe well inside the RPC deadline on machines without a camera."""
         devices: list[CameraDevice] = []
+        empty_run = 0
         for index in range(max(0, max_index)):
-            capture = CameraDeviceProbe.open_device(cv2_module, index)
-            if capture is not None:
-                devices.append(CameraDevice(index, f"Camera {index + 1}"))
+            opened_any = False
+            usable = False
+            for _, capture, delivers_frames, _ in CameraDeviceProbe.try_backends(cv2_module, index):
+                if capture is None:
+                    continue
+                opened_any = True
                 capture.release()
+                if delivers_frames:
+                    usable = True
+                    break
+            if usable:
+                devices.append(CameraDevice(index, f"Camera {index + 1}"))
+            empty_run = 0 if opened_any else empty_run + 1
+            if empty_run >= CameraDeviceProbe.EMPTY_INDEX_LIMIT:
+                break
         return devices
+
+    BACKENDS = ("CAP_DSHOW", "CAP_MSMF", "CAP_ANY")
+    EMPTY_INDEX_LIMIT = 2
 
     @staticmethod
     def open_device(cv2_module: Any, index: int) -> Any | None:
-        backends: list[int] = []
-        for name in ("CAP_DSHOW", "CAP_MSMF", "CAP_ANY"):
-            backend = int(getattr(cv2_module, name, 0))
-            if backend in backends:
-                continue
-            backends.append(backend)
-            capture = cv2_module.VideoCapture(index, backend)
-            if capture.isOpened():
+        for _, capture, delivers_frames, _ in CameraDeviceProbe.try_backends(cv2_module, index):
+            if capture is not None and delivers_frames:
                 return capture
-            capture.release()
+            if capture is not None:
+                capture.release()
         return None
+
+    @staticmethod
+    def try_backends(cv2_module: Any, index: int, attempts: int = 5):
+        """Yields (backend name, capture or None, frame delivered, error) per backend.
+
+        `isOpened()` alone is not enough on Windows: a device held by another app or
+        blocked by the camera privacy setting can open yet never deliver a frame.
+        """
+        seen: list[int] = []
+        for name in CameraDeviceProbe.BACKENDS:
+            backend = int(getattr(cv2_module, name, 0))
+            if backend in seen:
+                continue
+            seen.append(backend)
+            try:
+                capture = cv2_module.VideoCapture(index, backend)
+            except Exception as error:  # noqa: BLE001 - reported to the caller
+                yield name, None, False, str(error)
+                continue
+            if not capture.isOpened():
+                capture.release()
+                yield name, None, False, "not opened"
+                continue
+            delivered = False
+            for _ in range(max(1, attempts)):
+                success, frame = capture.read()
+                if success and frame is not None and frame.size > 0:
+                    delivered = True
+                    break
+                time.sleep(0.1)
+            yield name, capture, delivered, "" if delivered else "opened but no frames"
+
+    @staticmethod
+    def diagnose(cv2_module: Any, max_index: int = 8) -> list[dict[str, Any]]:
+        report: list[dict[str, Any]] = []
+        for index in range(max(0, max_index)):
+            for name, capture, delivered, error in CameraDeviceProbe.try_backends(cv2_module, index, attempts=3):
+                entry: dict[str, Any] = {
+                    "index": index,
+                    "backend": name,
+                    "opened": capture is not None,
+                    "frames": delivered,
+                    "error": error,
+                }
+                if capture is not None:
+                    entry["width"] = int(capture.get(cv2_module.CAP_PROP_FRAME_WIDTH))
+                    entry["height"] = int(capture.get(cv2_module.CAP_PROP_FRAME_HEIGHT))
+                    capture.release()
+                report.append(entry)
+        return report
 
 
 class GazeSettingsStore:
