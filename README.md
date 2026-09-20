@@ -23,7 +23,7 @@ Safety controls:
 ## Implemented system
 
 - Computer-vision gaze estimation using OpenCV and MediaPipe, with camera discovery, live preview, adjustable calibration, confidence, face-presence, and fail-open behavior.
-- Multimodal attention fusion across gaze, foreground app and redacted title, semantic relevance, idle time, app switches, mouse behaviour, scroll bursts, and keyboard behaviour including typing into a page that accepts no input. Raw keys are never stored.
+- Multimodal attention fusion across gaze, foreground app and redacted title, semantic relevance, app switches, mouse behaviour, scroll bursts, and keyboard behaviour including typing into a page that accepts no input. Stillness counts for nothing; only movement in excess of the work does. Raw keys are never stored.
 - DeepSeek-powered goal decomposition, subtask breakdown, and task-relevance classification, with timeouts and deterministic fallback.
 - A Goal Beacon that shows the current subtask, advances when the user completes a step, and pulses/shakes when sustained evidence indicates drift.
 - Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, dynamic browser image blur, future-text masking, reversible animation suppression, and reversible HTML edits that delete off-task blocks and trim sentences in the focused browser.
@@ -44,9 +44,9 @@ list is decorative.
 | Page/window semantic relevance | On-screen OCR text graded by DeepSeek (cached per page) | Main relevance term; local keyword rules only without a key |
 | On-screen text and pictures | `Windows.Media.Ocr` + screen capture, pictures graded by the vision model | Sentence/picture treatment and progress evidence |
 | Step progress | Screen evidence matched to the current step | Removes distraction evidence, auto-ticks the step |
-| Idle time | Raw input timestamps | Distraction, with 30 s thinking tolerance while coding/writing/problem-solving |
+| Idle time | Raw input timestamps | Never evidence on its own — reading, watching and thinking all look idle. Only a still seat plus a camera that sees nobody reports `away_from_screen` |
 | Scrolling | Raw input wheel notches and direction flips | Fast/erratic scroll bursts; anchors the reminder to the page before the burst |
-| Mouse motion and clicks | Raw input path length, net displacement, direction changes, click rate | Aimless drift and click mashing |
+| Mouse motion and clicks | Raw input path length, net displacement, direction changes, click rate | Travel far beyond what the work needs, aimless drift and click mashing |
 | Keyboard | Per-category key counts (letters, digits, navigation, editing, modifiers, function) — raw keys are never stored | Typing quality (gibberish) and random typing: bursts while the foreground window has no text caret and the screen text does not change |
 | Text caret presence | `GetGUIThreadInfo` on the foreground thread | Separates typing into an editor from typing into a page that accepts no input |
 | Browser page and reading position | DevTools `Runtime.evaluate` in the focused browser | Recovery card location, reading progress and skips |
@@ -92,7 +92,7 @@ flowchart LR
     WD --> BT
 ```
 
-The desktop host and browser native bridge are self-contained .NET executables. The CV/recording worker is a bundled one-file Python executable. Their protocol version and a random per-launch authentication token are checked before use.
+The desktop host is a self-contained .NET executable. The CV/recording worker is a bundled one-file Python executable. Their protocol version and a random per-launch authentication token are checked before use.
 
 ## Browser pages
 
@@ -112,7 +112,7 @@ Requirements: Windows 11 x64, PowerShell, Node.js, and the repository's `.tools`
 .\scripts\build.ps1
 ```
 
-The build restores dependencies, runs 73 core tests, 41 infrastructure tests, 32 worker tests, 12 browser tests, and three deterministic replay audits. It then publishes and launches the self-contained release as a smoke test. Output: `release/Anchor-win-x64`.
+The build restores dependencies, runs the core, infrastructure, worker and browser test suites, and three deterministic replay audits. It then publishes and launches the self-contained release as a smoke test. Output: `release/Anchor-win-x64`.
 
 For a faster development-only verification without packaging:
 
@@ -143,13 +143,11 @@ src/Anchor.Core             task plans, fusion, state, policy, recovery, replay
 src/Anchor.Infrastructure   DeepSeek, persistence, Windows sensors, IPC, safety
 src/Anchor.Desktop          WinUI Settings, tray lifecycle, overlays, recording UI
 src/Anchor.Worker           camera gaze and screen-recording worker
-src/Anchor.NativeBridge     browser-to-desktop native messaging adapter
 browser/anchor-page-agent   page edits injected over the DevTools protocol
-browser/anchor-extension    legacy DOM-aware browser support (optional)
 tests                       C# unit and integration tests
 demo/replay                 reproducible scenarios
 docs                        design, privacy, and demo documentation
-scripts                     build, verification, demo, and bridge setup
+scripts                     build, verification, and demo
 ```
 
 ## Honest prototype limits

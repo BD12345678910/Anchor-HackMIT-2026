@@ -119,6 +119,43 @@ public sealed class MouseBehaviorTests
     }
 
     [Fact]
+    public void A_motionless_window_carries_no_more_weight_than_a_moving_one()
+    {
+        var still = AttentionStateMachine.CreateDefault().Update(SensorWindow.Create(
+            keyCount: 0,
+            mouseDistance: 0,
+            idleSeconds: 40,
+            appRelevance: 0.7,
+            activity: ActivityKind.Reading));
+        var moving = AttentionStateMachine.CreateDefault().Update(SensorWindow.Create(
+            keyCount: 0,
+            mouseDistance: 400,
+            idleSeconds: 0,
+            appRelevance: 0.7,
+            activity: ActivityKind.Reading));
+
+        Assert.Equal(AttentionState.Focused, still.State);
+        Assert.Equal(moving.DistractionProbability, still.DistractionProbability, 3);
+    }
+
+    [Fact]
+    public void Far_more_travel_than_the_work_needs_weighs_more_than_a_little()
+    {
+        static double Evidence(double distance) => AttentionStateMachine.CreateDefault()
+            .Update(SensorWindow.Create(
+                keyCount: 0,
+                mouseDistance: distance,
+                idleSeconds: 0,
+                appRelevance: 0.7,
+                activity: ActivityKind.Reading))
+            .DistractionProbability;
+
+        Assert.Equal(Evidence(300), Evidence(900), 3);
+        Assert.True(Evidence(1_400) > Evidence(900));
+        Assert.True(Evidence(1_800) - Evidence(1_400) > Evidence(1_400) - Evidence(900));
+    }
+
+    [Fact]
     public void Click_mashing_with_no_typing_is_reported()
     {
         var fusion = new AttentionFusion();

@@ -21,7 +21,7 @@ const {
   shortenSentence,
   downscaleImageSource,
   restorePixelatedImages,
-} = require("../content-script.js");
+} = require("../focus-engine.js");
 
 class FakeClassList {
   constructor() { this.values = new Set(); }

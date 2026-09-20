@@ -1,7 +1,6 @@
 using Anchor.Core.Models;
 using Anchor.Core.Services;
 using Anchor.Infrastructure.Windows;
-using Anchor.Infrastructure.Browser;
 using Anchor_Desktop.Interventions;
 using Anchor_Desktop.Overlays;
 using System.Runtime.InteropServices;
@@ -12,7 +11,6 @@ namespace Anchor_Desktop.Services;
 
 public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInterventionController
 {
-    private readonly NativeBridgeServer? _browserBridge;
     private readonly PointerConfinement _pointer = new();
     private readonly Action<string, Exception> _logError;
     private GoalBeaconWindow? _beacon;
@@ -33,9 +31,8 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     private static readonly TimeSpan PreviewDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan ImageBlurPreviewDuration = TimeSpan.FromSeconds(20);
 
-    public OverlayPresenter(NativeBridgeServer? browserBridge = null, Action<string, Exception>? logError = null)
+    public OverlayPresenter(Action<string, Exception>? logError = null)
     {
-        _browserBridge = browserBridge;
         _logError = logError ?? ((_, _) => { });
         ImageBlur = new DesktopImageBlurService(
             () => (_imageBlurPreview || (_toolkitState.ImageBlur && !_imageBlurSuspended)) && !_toolkitState.SecureWindow,
@@ -88,23 +85,6 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
                 _imageBlurSuspended = false;
             }
             _toolkitState = state;
-            _browserBridge?.UpdateSnapshot("toolkitState", System.Text.Json.JsonSerializer.Serialize(new
-            {
-                type = "toolkitState",
-                imageBlur = state.BrowserImageBlur,
-                futureTextMask = state.BrowserFutureTextMask,
-                suppressAnimations = state.BrowserAnimationSuppression,
-                gazeSpotlight = state.GazeSpotlight,
-                peripheralDim = state.PeripheralDim,
-                windowFirewall = state.WindowFirewall,
-                pointerGuard = state.PointerGuard,
-                secureWindow = state.SecureWindow,
-                clutterRemoval = state.BrowserClutterRemoval,
-                simplifyText = state.BrowserTextSimplification,
-                taskKeywords = state.TaskKeywords.Split(
-                    ' ',
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            }));
             EnableVisualFilter = state.PeripheralDim;
             EnablePointerGuard = state.PointerGuard;
             ImageBlur.Refresh();

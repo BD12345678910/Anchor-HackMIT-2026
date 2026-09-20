@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\browser\anchor-extension\content-script.js" LogicalName="Anchor.Infrastructure.Browser.content-script.js" />
+    <EmbeddedResource Include="..\..\browser\anchor-page-agent\focus-engine.js" LogicalName="Anchor.Infrastructure.Browser.focus-engine.js" />
     <EmbeddedResource Include="..\..\browser\anchor-page-agent\page-agent.js" LogicalName="Anchor.Infrastructure.Browser.page-agent.js" />
   </ItemGroup>
 

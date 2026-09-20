@@ -7,10 +7,6 @@ $release = [IO.Path]::GetFullPath($ReleaseDirectory)
 $required = @(
     'Anchor.exe',
     'Anchor.VisionWorker.exe',
-    'Anchor.NativeBridge.exe',
-    'browser-extension\manifest.json',
-    'register-browser-bridge.ps1',
-    'unregister-browser-bridge.ps1',
     'camera-check.ps1',
     'README.md',
     'PRIVACY.md',

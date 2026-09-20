@@ -5,7 +5,7 @@ This seven-minute demo shows a complete loop: configure gaze, convert an intenti
 ## Before judges arrive
 
 1. Build with `./scripts/build.ps1` and run `release/Anchor-win-x64/Anchor.exe`.
-2. Load the release's `browser-extension` folder unpacked in Chrome or Edge, register its displayed ID with `register-browser-bridge.ps1`, and click the extension on the demo origin once.
+2. On the Tools page press **Open focused browser**: Anchor starts Chrome or Edge in its own profile and edits those pages directly. Nothing is installed.
 3. Use public/non-sensitive material. Good choices are an article or problem on `usaco.guide`, `usaco.org`, `codeforces.com`, `luogu.com.cn`, or a local PDF. Avoid signing into school, College Board, or personal YouTube accounts during recording.
 4. Keep `./scripts/run-demo.ps1 -Scenario all` ready as deterministic backup evidence.
 5. Keep the notification-area icon visible and know the safety keys: `Esc`, `Ctrl+Shift+A`, and `Ctrl+Shift+F12`.
@@ -78,7 +78,7 @@ Close Settings. The window disappears but the stationary notification-area icon 
 
 **Why is this more than an app blocker?** Anchor estimates continuity relative to a declared task, preserves the last safe context before intervention, guides return, and tracks progress through meaningful subtasks. Blocking is only one optional, reversible mechanism.
 
-**What makes it technically complex?** It combines real-time computer vision, calibration, native Windows input/window sensing, semantic LLM calls, temporal multimodal fusion, desktop overlays, a DOM-aware extension, authenticated cross-process IPC, local persistence, synchronized study recording, and fail-open safety.
+**What makes it technically complex?** It combines real-time computer vision, calibration, native Windows input/window sensing, semantic LLM calls, temporal multimodal fusion, desktop overlays, reversible live-page editing over the DevTools protocol, authenticated cross-process IPC, local persistence, synchronized study recording, and fail-open safety.
 
 **How do you avoid a gaze false positive?** Gaze is one confidence-weighted source. The engine also considers task relevance, app switches, idle/input patterns, browser reading behavior, and time. Missing gaze becomes unknown, and stronger interventions require sustained combined evidence and cooldowns.
 

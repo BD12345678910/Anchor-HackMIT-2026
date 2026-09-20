@@ -9,7 +9,7 @@ Anchor infers whether a person may have lost task context. That is sensitive and
 | Camera | Face landmarks, normalized gaze point, confidence, face-present flag | Calibration/settings and derived events; no webcam frames |
 | Foreground desktop | Process name and redacted window title | Bounded derived events |
 | Keyboard | Counts by key category | Aggregate counts; never raw keys or typed text |
-| Mouse/scroll | Movement distance, idle duration, scroll reversals | Aggregate values; not raw pointer history |
+| Mouse/scroll | Movement distance, idle duration, scroll reversals | Aggregate values; not raw pointer history. Idle time is never read as distraction on its own |
 | Browser adapter | Approved origin, title, reading progress, skip/stuck events, optional short phrase | Derived event; no browsing-history permission |
 | Task context | Goal, subtask, sanitized document/origin anchor, prior and next action | Local Context Capsule |
 | DeepSeek, when enabled | Goal and bounded/redacted task context needed for planning or relevance | Subject to the user's DeepSeek account and API policy |
@@ -47,7 +47,7 @@ Because full-screen study recording captures what is visible on Display 1, the p
 
 Normal event history is stored in `%LOCALAPPDATA%\Anchor\anchor.db` using SQLite. It contains session identifiers, timestamps, source/type labels, and bounded redacted feature maps. **Delete local history** removes stored event history after the current session stops.
 
-Study recordings are separate files in the user-selected folder and are not removed by **Delete local history**. Browser permission and native-host registration are also separate; use the extension controls and `unregister-browser-bridge.ps1` to remove them.
+Study recordings are separate files in the user-selected folder and are not removed by **Delete local history**. The focused browser keeps its own profile under `%LOCALAPPDATA%\Anchor\browser`; deleting that folder removes it.
 
 ## Safety controls
 
