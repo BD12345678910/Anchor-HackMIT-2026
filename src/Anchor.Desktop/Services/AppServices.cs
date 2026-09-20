@@ -146,22 +146,14 @@ public sealed class AppServices : IAsyncDisposable
     }
 
     /// <summary>
-    /// DeepSeek is the default intelligence path whenever a key is present: saved settings win,
-    /// otherwise the <c>DEEPSEEK_API_KEY</c> environment variable. Explicitly disabling in settings
-    /// turns it off even if the variable is set.
+    /// DeepSeek is always the intelligence path whenever a key is present: the saved key wins,
+    /// otherwise the <c>DEEPSEEK_API_KEY</c> environment variable. Local rules are only a fallback
+    /// for a missing key or an unreachable API, never a mode the user picks.
     /// </summary>
     public static string ResolveDeepSeekKey(DeepSeekSettings? settings)
     {
         var environmentKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? string.Empty;
-        if (settings is null)
-        {
-            return environmentKey.Trim();
-        }
-        if (!settings.Enabled)
-        {
-            return string.Empty;
-        }
-        return string.IsNullOrWhiteSpace(settings.ApiKey) ? environmentKey.Trim() : settings.ApiKey.Trim();
+        return string.IsNullOrWhiteSpace(settings?.ApiKey) ? environmentKey.Trim() : settings.ApiKey.Trim();
     }
 
     public async ValueTask DisposeAsync()

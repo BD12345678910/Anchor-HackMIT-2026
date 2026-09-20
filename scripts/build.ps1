@@ -64,6 +64,7 @@ try {
         Copy-Item -LiteralPath 'browser\anchor-extension' -Destination (Join-Path $publishDirectory 'browser-extension') -Recurse -Force
         Copy-Item -LiteralPath 'scripts\register-browser-bridge.ps1' -Destination $publishDirectory -Force
         Copy-Item -LiteralPath 'scripts\unregister-browser-bridge.ps1' -Destination $publishDirectory -Force
+        Copy-Item -LiteralPath 'scripts\camera-check.ps1' -Destination $publishDirectory -Force
         Copy-Item -LiteralPath 'README.md' -Destination $publishDirectory -Force
         Copy-Item -LiteralPath 'docs\privacy.md' -Destination (Join-Path $publishDirectory 'PRIVACY.md') -Force
         Copy-Item -LiteralPath 'docs\demo-script.md' -Destination (Join-Path $publishDirectory 'DEMO.md') -Force

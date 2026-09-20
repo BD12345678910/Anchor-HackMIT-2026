@@ -16,6 +16,60 @@ using Windows.Storage.Pickers;
 namespace Anchor_Desktop.ViewModels;
 
 public sealed record TimelineItem(string Time, string Label, string Detail);
+
+public sealed partial class AttentionAnalyticsViewModel : ObservableObject
+{
+    [ObservableProperty] public partial string AttentionSpan { get; set; } = "—";
+    [ObservableProperty] public partial string DistractionRate { get; set; } = "—";
+    [ObservableProperty] public partial string OnTaskShare { get; set; } = "—";
+    [ObservableProperty] public partial string Triggers { get; set; } = "What pulls you away: no distraction recorded yet.";
+    [ObservableProperty] public partial string Interventions { get; set; } = "Interventions used: none yet.";
+    [ObservableProperty] public partial string Trend { get; set; } = "Trend: not enough data yet.";
+
+    public void Apply(AttentionAnalysis analysis)
+    {
+        if (analysis.Samples < 2)
+        {
+            Reset();
+            return;
+        }
+
+        AttentionSpan = $"{Short(analysis.MedianAttentionSpan)} / {Short(analysis.LongestAttentionSpan)}"
+            + (analysis.CurrentAttentionSpan > TimeSpan.Zero ? $" · now {Short(analysis.CurrentAttentionSpan)}" : string.Empty);
+        DistractionRate = $"{analysis.DistractionsPerHour:0.#}/h · {Short(analysis.MedianRecovery)}";
+        OnTaskShare = $"{analysis.OnTaskShare:P0}";
+        Triggers = analysis.Triggers.Count == 0
+            ? "What pulls you away: no distraction recorded yet."
+            : "What pulls you away: " + string.Join(", ", analysis.Triggers.Take(4).Select(static pair => $"{pair.Key.Replace('_', ' ')} ×{pair.Value}"));
+        Interventions = analysis.Interventions.Count == 0
+            ? "Interventions used: none yet."
+            : "Interventions used: " + string.Join(", ", analysis.Interventions.Select(static pair => $"{Describe(pair.Key)} ×{pair.Value}"));
+        Trend = "Trend: " + analysis.Trend;
+    }
+
+    public void Reset()
+    {
+        AttentionSpan = "—";
+        DistractionRate = "—";
+        OnTaskShare = "—";
+        Triggers = "What pulls you away: no distraction recorded yet.";
+        Interventions = "Interventions used: none yet.";
+        Trend = "Trend: not enough data yet.";
+    }
+
+    private static string Short(TimeSpan value) =>
+        value.TotalMinutes >= 1 ? $"{(int)value.TotalMinutes}m {value.Seconds:00}s" : $"{value.Seconds}s";
+
+    private static string Describe(InterventionKind kind) => kind switch
+    {
+        InterventionKind.BeaconPulse => "beacon pulse",
+        InterventionKind.VisualFilter => "visual filter",
+        InterventionKind.IntentionGate => "intention gate",
+        InterventionKind.RecoveryCard => "recovery card",
+        InterventionKind.BreakSuggestion => "break suggestion",
+        _ => kind.ToString()
+    };
+}
 public sealed record TaskStepItem(string Number, string Title, string CompletionCriterion, string Status);
 
 public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
@@ -44,10 +98,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private static readonly TimeSpan ScreenReadInterval = TimeSpan.FromSeconds(4);
     private readonly HashSet<string> _dismissedSuggestions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userRelevantTargets = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AttentionAnalyzer _analyzer = new();
 
     public MainPageViewModel(AppServices services)
     {
         _services = services;
+        _services.Orchestrator.InterventionPresented += Orchestrator_InterventionPresented;
         _timer.Tick += Timer_Tick;
         _gazeTimer.Tick += GazeTimer_Tick;
         _recordingTimer.Tick += RecordingTimer_Tick;
@@ -62,6 +118,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private void ImageBlur_StatusChanged(object? sender, string status) =>
         App.DispatcherQueue.TryEnqueue(() => ImageBlurStatus = $"Image blur: {status}");
 
+    private void Orchestrator_InterventionPresented(InterventionDecision decision, ContextCapsule? capsule)
+    {
+        _analyzer.RecordIntervention(decision);
+        App.DispatcherQueue.TryEnqueue(() => Analytics.Apply(_analyzer.Analyze(DateTimeOffset.UtcNow)));
+    }
+
+    public AttentionAnalyticsViewModel Analytics { get; } = new();
     public ObservableCollection<TimelineItem> Timeline { get; } = [];
     public ObservableCollection<TaskStepItem> TaskSteps { get; } = [];
     public ObservableCollection<CameraDevice> CameraDevices { get; } = [];
@@ -233,12 +296,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             var key = AppServices.ResolveDeepSeekKey(settings);
             DeepSeekEnabled = key.Length > 0;
             DeepSeekStatus = key.Length == 0
-                ? settings?.Enabled == false
-                    ? "Disabled · local rules only (screen progress will only suggest, never auto-complete)"
-                    : "Not configured · local fallback remains available"
-                : settings?.Enabled == true && !string.IsNullOrWhiteSpace(settings.ApiKey)
-                    ? $"Active by default · {settings.Model} · screen progress + context reminders"
-                    : "Active by default from DEEPSEEK_API_KEY · deepseek-flash";
+                ? "No API key yet · running on local rules (screen progress only suggests, never auto-completes). Paste your DeepSeek key below."
+                : !string.IsNullOrWhiteSpace(settings?.ApiKey)
+                    ? $"Active · {settings.Model} · plans, relevance, screen progress and context reminders"
+                    : "Active · deepseek-flash · key from DEEPSEEK_API_KEY";
             ScreenReaderStatus = _services.ScreenReader.Status;
         }
         catch (Exception error)
@@ -259,23 +320,22 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 ? existing?.ApiKey ?? string.Empty
                 : DeepSeekApiKey.Trim();
             var environmentKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? string.Empty;
-            if (DeepSeekEnabled && savedKey.Length == 0 && string.IsNullOrWhiteSpace(environmentKey))
+            if (savedKey.Length == 0 && string.IsNullOrWhiteSpace(environmentKey))
             {
-                DeepSeekStatus = "Enter a DeepSeek API key (or set DEEPSEEK_API_KEY) before enabling cloud intelligence.";
+                DeepSeekStatus = "Enter a DeepSeek API key (or set DEEPSEEK_API_KEY). Until then Anchor runs on local rules.";
                 return;
             }
 
             await _services.DeepSeekSettings.SaveAsync(new DeepSeekSettings(
-                DeepSeekEnabled,
+                Enabled: true,
                 savedKey,
                 "deepseek-flash",
                 DeepSeekClient.DefaultEndpoint.ToString()));
             DeepSeekApiKey = string.Empty;
-            DeepSeekStatus = !DeepSeekEnabled
-                ? "Disabled · local fallback only"
-                : savedKey.Length > 0
-                    ? "Active · deepseek-flash · key encrypted for this Windows account"
-                    : "Active · deepseek-flash · using DEEPSEEK_API_KEY from the environment";
+            DeepSeekEnabled = true;
+            DeepSeekStatus = savedKey.Length > 0
+                ? "Active · deepseek-flash · key encrypted for this Windows account"
+                : "Active · deepseek-flash · key from DEEPSEEK_API_KEY";
             if (_taskPlanner is not null && !IsRunning)
             {
                 _taskPlanner = null;
@@ -322,7 +382,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             IsPlanReady = true;
             _services.Overlays.UpdateGoal(TaskTitle, state.Progress.CurrentStep?.Title, state.ProgressLabel);
             StatusMessage = state.IsFallback
-                ? "Planned locally (DeepSeek is off). Review the steps, then start the focus session."
+                ? "Planned with local rules (no DeepSeek key or DeepSeek unreachable). Review the steps, then start the focus session."
                 : "Plan ready. Review the steps, then start the focus session.";
         }
         catch (Exception error)
@@ -363,8 +423,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         {
             var session = await _services.Orchestrator.StartAsync(TaskTitle);
             _attentionFusion = new AttentionFusion();
+            _analyzer.Reset();
+            Analytics.Reset();
             var gazeStatus = await _services.Inference.StartGazeAsync();
             _sessionGazeActive = gazeStatus.Running;
+            GazeStatusMessage = gazeStatus.Running
+                ? "Camera on · gaze anchors the line you are reading and drives the spotlight."
+                : $"Camera not open · gaze unavailable, reminders anchor to caret/pointer instead{(string.IsNullOrWhiteSpace(gazeStatus.Error) ? string.Empty : $" ({gazeStatus.Error})")}.";
             var taskState = _taskPlanner.Current;
             _services.Overlays.UpdateGoal(
                 session.Title,
@@ -550,14 +615,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _lastScreen = snapshot;
         var anchorSource = snapshot.FocusSource switch
         {
-            FocusSource.Gaze => "gaze",
-            FocusSource.Caret => "caret",
-            FocusSource.Pointer => "pointer",
-            FocusSource.Viewport => "viewport",
-            _ => "none"
+            FocusSource.Gaze => "gaze (camera on)",
+            FocusSource.Caret => "camera not open · caret",
+            FocusSource.Pointer => "camera not open · pointer",
+            FocusSource.Viewport => "camera not open · viewport",
+            _ => "camera not open · no anchor"
         };
         ScreenAnchor = snapshot.FocusLine is null
-            ? $"{snapshot.ProcessName} · no text recognised"
+            ? $"{snapshot.ProcessName} · {anchorSource} · no text recognised"
             : $"{anchorSource} · \u201c{Truncate(snapshot.FocusLine.Text, 90)}\u201d";
         _services.Trace($"screen process={snapshot.ProcessName} lines={snapshot.Lines.Count} anchor={anchorSource} focus=\"{snapshot.FocusLine?.Text}\"");
     }
@@ -753,6 +818,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         await _services.Store.InitializeAsync();
         await _services.Store.DeleteAllAsync();
         Timeline.Clear();
+        _analyzer.Reset();
+        Analytics.Reset();
         FocusedDuration = "0m 00s";
         RecoveryDuration = "0m 00s";
         InterruptionCount = 0;
@@ -798,8 +865,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 0 when windowsDevices.Count == 0 =>
                     "No camera found. Plug in a webcam, then refresh.",
                 0 =>
-                    $"Windows sees {Describe(windowsDevices)}, but it could not be opened. Close other apps using the camera "
-                    + "(Teams, Zoom, browser tabs) and allow desktop apps under Settings > Privacy & security > Camera.",
+                    $"Windows sees {Describe(windowsDevices)}, but no frames arrived over DirectShow, Media Foundation or auto. Close other apps using the camera "
+                    + "(Teams, Zoom, browser tabs), allow desktop apps under Settings > Privacy & security > Camera, "
+                    + "then run camera-check.ps1 next to Anchor.exe for a per-backend report.",
                 _ => $"Ready · {Describe(merged)} can be opened. Choose one and press Test gaze."
             };
         }
@@ -1113,6 +1181,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             if (contextIsSafe)
             {
                 await ReadScreenAsync(gaze, raw, now);
+            }
+            _services.Overlays.ImageBlur.UpdateScene(
+                contextIsSafe,
+                context.ProcessName,
+                PictureTreatmentPlanner.TaskTokens(TaskTitle, CurrentSubtask, contextIsSafe ? context.WindowTitle : null),
+                contextIsSafe ? _lastScreen : null);
+            if (contextIsSafe)
+            {
                 _services.Orchestrator.ObserveContext(_services.Sensors.CreateContextObservation(
                     TaskTitle,
                     CurrentSubtask,
@@ -1230,6 +1306,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplyPrediction(AttentionPrediction prediction)
     {
+        var now = DateTimeOffset.UtcNow;
+        _analyzer.Record(now, prediction);
+        Analytics.Apply(_analyzer.Analyze(now));
         AttentionState = prediction.State.ToString();
         Confidence = $"{prediction.Confidence:P0}";
         ReasonSummary = prediction.ReasonCodes.Count == 0

@@ -1,3 +1,4 @@
+using Anchor.Core.Models;
 using Anchor.Core.Services;
 using System.Diagnostics;
 using System.Drawing;
@@ -20,8 +21,8 @@ public sealed class DesktopImageBlurService : IDisposable
     private static readonly TimeSpan SlowScanBackoff = TimeSpan.FromMilliseconds(1500);
     private static readonly string[] ShellClasses = ["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"];
 
-    /// <summary>Target number of mosaic cells across the shorter side of a picture.</summary>
-    private const int CellsAcrossShortSide = 18;
+    /// <summary>The 2-second sensing tick refreshes the scene; older scenes no longer describe the front window.</summary>
+    private static readonly TimeSpan SceneLifetime = TimeSpan.FromSeconds(8);
 
     /// <summary>Title bar, tab strip and toolbars live in this band; pictures found only there are UI, not content.</summary>
     private const int ToolbarBandHeight = 96;
@@ -34,6 +35,15 @@ public sealed class DesktopImageBlurService : IDisposable
     private Thread? _thread;
     private string _status = "Off";
     private int _visibleRegions;
+    private Scene? _scene;
+
+    /// <summary>What the sensing loop last learned about the front window; read by the blur thread.</summary>
+    private sealed record Scene(
+        DateTimeOffset At,
+        bool WindowRelevant,
+        string ProcessName,
+        IReadOnlyCollection<string> TaskTokens,
+        ScreenSnapshot? Screen);
 
     public DesktopImageBlurService(Func<bool> shouldRun, Action<string, Exception> logError)
     {
@@ -59,6 +69,16 @@ public sealed class DesktopImageBlurService : IDisposable
     public int VisibleRegions => _visibleRegions;
     public bool IsBlurring => _visibleRegions > 0;
     public event EventHandler<string>? StatusChanged;
+
+    /// <summary>
+    /// Tells the blur pass how the front window relates to the task so each picture can be treated
+    /// proportionally: softened when its caption is about the task, pixelated when it is unrelated
+    /// content, and turned into a coarse mosaic when the window is off-task or the picture is ad-shaped.
+    /// </summary>
+    public void UpdateScene(bool windowRelevant, string? processName, IReadOnlyCollection<string> taskTokens, ScreenSnapshot? screen)
+    {
+        Volatile.Write(ref _scene, new Scene(DateTimeOffset.UtcNow, windowRelevant, processName ?? string.Empty, taskTokens, screen));
+    }
 
     /// <summary>Re-evaluates immediately (after a toggle or session change) instead of waiting a tick.</summary>
     public void Refresh()
@@ -169,11 +189,61 @@ public sealed class DesktopImageBlurService : IDisposable
             return scan > SlowScanBackoff / 2 ? SlowScanBackoff : Interval;
         }
 
-        using var surface = Compose(capture, regions);
+        var treatments = PlanTreatments(regions, processName, bounds.Size);
+        using var surface = Compose(capture, regions, treatments);
         window.Present(surface, bounds.Location);
         _visibleRegions = regions.Count;
-        Status = $"Blurring {regions.Count} picture{(regions.Count == 1 ? string.Empty : "s")} in {processName}";
+        Status = DescribeTreatments(treatments, processName);
         return scan > SlowScanBackoff / 2 ? SlowScanBackoff : Interval;
+    }
+
+    private PictureTreatment[] PlanTreatments(IReadOnlyList<Rectangle> regions, string processName, Size windowSize)
+    {
+        var scene = Volatile.Read(ref _scene);
+        var fresh = scene is not null && DateTimeOffset.UtcNow - scene.At <= SceneLifetime;
+        // No session running (toolkit preview): nothing is known about the task, so use the
+        // middle treatment except for ad-shaped pictures.
+        var context = !fresh
+            ? new PictureSceneContext(true, [], [], windowSize.Width, windowSize.Height)
+            : string.Equals(scene!.ProcessName, processName, StringComparison.OrdinalIgnoreCase)
+            ? new PictureSceneContext(
+                scene.WindowRelevant,
+                scene.TaskTokens,
+                scene.Screen is { } screen && string.Equals(screen.ProcessName, processName, StringComparison.OrdinalIgnoreCase)
+                    ? screen.Lines
+                    : [],
+                windowSize.Width,
+                windowSize.Height)
+            : PictureSceneContext.OffTask(windowSize.Width, windowSize.Height);
+
+        var treatments = new PictureTreatment[regions.Count];
+        for (var i = 0; i < regions.Count; i++)
+        {
+            var r = regions[i];
+            treatments[i] = PictureTreatmentPlanner.Plan(new PixelRect(r.X, r.Y, r.Width, r.Height), context);
+        }
+        return treatments;
+    }
+
+    private static string DescribeTreatments(IReadOnlyList<PictureTreatment> treatments, string processName)
+    {
+        var softened = treatments.Count(static t => t == PictureTreatment.Soften);
+        var pixelated = treatments.Count(static t => t == PictureTreatment.Pixelate);
+        var mosaicked = treatments.Count - softened - pixelated;
+        var parts = new List<string>(3);
+        if (softened > 0)
+        {
+            parts.Add($"{softened} on-topic softened");
+        }
+        if (pixelated > 0)
+        {
+            parts.Add($"{pixelated} unrelated pixelated");
+        }
+        if (mosaicked > 0)
+        {
+            parts.Add($"{mosaicked} off-task/ad-like mosaicked");
+        }
+        return $"{string.Join(" · ", parts)} in {processName}";
     }
 
     private static Bitmap? Capture(IntPtr foreground, Rectangle bounds)
@@ -275,7 +345,7 @@ public sealed class DesktopImageBlurService : IDisposable
         }
     }
 
-    private static Bitmap Compose(Bitmap capture, IReadOnlyList<Rectangle> regions)
+    private static Bitmap Compose(Bitmap capture, IReadOnlyList<Rectangle> regions, IReadOnlyList<PictureTreatment> treatments)
     {
         var surface = new Bitmap(capture.Width, capture.Height, PixelFormat.Format32bppPArgb);
         using var target = Graphics.FromImage(surface);
@@ -283,11 +353,14 @@ public sealed class DesktopImageBlurService : IDisposable
         target.PixelOffsetMode = PixelOffsetMode.Half;
         target.CompositingQuality = CompositingQuality.HighSpeed;
 
-        foreach (var local in regions)
+        for (var i = 0; i < regions.Count; i++)
         {
+            var local = regions[i];
             // Downsample to a coarse grid and stretch back with nearest-neighbour: the picture
             // stays recognisable at low resolution, but fine detail that pulls attention is gone.
-            var shrink = Math.Clamp(Math.Min(local.Width, local.Height) / CellsAcrossShortSide, 4, 40);
+            // The grid is finer for pictures that illustrate the task and coarser for ads/off-task pages.
+            var cells = PictureTreatmentPlanner.CellsAcrossShortSide(treatments[i]);
+            var shrink = Math.Clamp(Math.Min(local.Width, local.Height) / cells, 3, 48);
             var smallSize = new Size(Math.Max(2, local.Width / shrink), Math.Max(2, local.Height / shrink));
             using var small = new Bitmap(smallSize.Width, smallSize.Height, PixelFormat.Format32bppArgb);
             using (var shrinkGraphics = Graphics.FromImage(small))

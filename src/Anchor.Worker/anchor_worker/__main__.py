@@ -14,7 +14,22 @@ def main() -> None:
     parser.add_argument("--token")
     parser.add_argument("--health-json", action="store_true")
     parser.add_argument("--camera-list-json", action="store_true")
+    parser.add_argument("--camera-diagnose-json", action="store_true")
     arguments = parser.parse_args()
+    if arguments.camera_diagnose_json:
+        try:
+            import cv2
+
+            from .camera import CameraDeviceProbe
+
+            print(json.dumps({
+                "status": "ok",
+                "opencv": cv2.__version__,
+                "probes": CameraDeviceProbe.diagnose(cv2),
+            }, separators=(",", ":")))
+        except Exception as error:
+            print(json.dumps({"status": "degraded", "error": str(error), "probes": []}, separators=(",", ":")))
+        return
     if arguments.health_json:
         print(json.dumps({
             "status": "ok",

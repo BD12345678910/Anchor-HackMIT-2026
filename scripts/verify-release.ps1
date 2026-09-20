@@ -11,6 +11,7 @@ $required = @(
     'browser-extension\manifest.json',
     'register-browser-bridge.ps1',
     'unregister-browser-bridge.ps1',
+    'camera-check.ps1',
     'README.md',
     'PRIVACY.md',
     'DEMO.md'

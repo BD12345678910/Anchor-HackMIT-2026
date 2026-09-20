@@ -452,7 +452,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
         if (capsule is not null)
         {
             var local = LocalContextReminder.Compose(capsule);
-            _recovery.SetReminder(local, capsule.Activity);
+            _recovery.SetReminder(local, capsule.Activity, capsule.FocusSource);
             _ = UpgradeReminderAsync(_recovery, capsule);
         }
         else
@@ -513,7 +513,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
             var reminder = await ReminderProvider(capsule, timeout.Token);
             if (ReferenceEquals(_recovery, card))
             {
-                card.SetReminder(reminder, capsule.Activity);
+                card.SetReminder(reminder, capsule.Activity, capsule.FocusSource);
             }
         }
         catch (Exception error)
