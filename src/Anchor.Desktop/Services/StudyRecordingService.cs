@@ -63,6 +63,7 @@ public sealed class StudyRecordingService : IAsyncDisposable
             gaze?.FacePresent ?? false,
             prediction.State.ToString().ToLowerInvariant(),
             prediction.DistractionProbability,
+            prediction.Confidence,
             task,
             subtask), cancellationToken);
     }

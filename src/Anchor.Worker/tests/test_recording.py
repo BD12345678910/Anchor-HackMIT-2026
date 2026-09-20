@@ -84,3 +84,56 @@ def test_rejects_non_pseudonymous_participant_codes(tmp_path):
         assert "participant" in str(error).lower()
     else:
         raise AssertionError("personally identifying participant code was accepted")
+
+
+def _wide_frame():
+    return np.full((720, 1280, 3), 28, dtype=np.uint8)
+
+
+def _sample():
+    return {
+        "at_ms": 100,
+        "gaze_x": 0.5,
+        "gaze_y": 0.5,
+        "confidence": 0.8,
+        "face_present": True,
+        "attention_state": "drifting",
+        "distraction_probability": 0.72,
+        "attention_confidence": 0.61,
+        "task": "Do 3 USACO problems",
+        "subtask": "Solve problem 1",
+    }
+
+
+def test_composite_shows_the_camera_panel_next_to_the_screen(tmp_path):
+    panel = np.full((240, 260, 3), (0, 0, 255), dtype=np.uint8)
+    recorder = StudyRecorder(fps=15, capture=_wide_frame, eye_panel=lambda width: panel[:, :width])
+    recorder._latest_sample = _sample()
+
+    composed = recorder._composite(_wide_frame(), 1000)
+
+    left = 1280 - 240 - 16
+    assert tuple(composed[100, left + 20]) == (0, 0, 255)
+    assert not np.array_equal(composed, _wide_frame())
+
+
+def test_composite_says_the_camera_is_off_instead_of_faking_an_eye_view():
+    recorder = StudyRecorder(fps=15, capture=_wide_frame, eye_panel=lambda width: None)
+    recorder._latest_sample = {**_sample(), "face_present": False, "confidence": 0.0}
+
+    composed = recorder._composite(_wide_frame(), 1000)
+
+    left = 1280 - 240 - 16
+    column = composed[64:260, left:]
+    assert column.max() > 28
+    assert not np.any(np.all(column == (0, 0, 255), axis=-1))
+
+
+def test_composite_survives_a_camera_that_raises():
+    def broken(width):
+        raise RuntimeError("camera disconnected")
+
+    recorder = StudyRecorder(fps=15, capture=_wide_frame, eye_panel=broken)
+    recorder._latest_sample = _sample()
+
+    assert recorder._composite(_wide_frame(), 500).shape == (720, 1280, 3)

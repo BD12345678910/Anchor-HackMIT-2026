@@ -19,8 +19,12 @@ import numpy as np
 PARTICIPANT_CODE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 SAMPLE_FIELDS = [
     "at_ms", "gaze_x", "gaze_y", "confidence", "face_present",
-    "attention_state", "distraction_probability", "task", "subtask",
+    "attention_state", "distraction_probability", "attention_confidence", "task", "subtask",
 ]
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+PANEL_BACKGROUND = (22, 28, 44)
+PANEL_TEXT = (228, 234, 255)
+PANEL_DIM = (168, 180, 208)
 
 
 @dataclass(frozen=True)
@@ -75,12 +79,14 @@ class StudyRecorder:
         *,
         fps: int = 15,
         capture: Optional[Callable[[], np.ndarray]] = None,
+        eye_panel: Optional[Callable[[int], Optional[np.ndarray]]] = None,
         minimum_free_bytes: int = 256 * 1024 * 1024,
     ) -> None:
         if fps < 1 or fps > 60:
             raise ValueError("fps must be between 1 and 60")
         self._fps = fps
         self._capture = capture
+        self._eye_panel = eye_panel
         self._minimum_free_bytes = minimum_free_bytes
         self._frames: Queue[tuple[int, np.ndarray]] = Queue(maxsize=2)
         self._stop = threading.Event()
@@ -302,14 +308,59 @@ class StudyRecorder:
         confidence = _number(sample.get("confidence"))
         if x is not None and y is not None and confidence >= 0.45:
             cv2.circle(result, (int(x * result.shape[1]), int(y * result.shape[0])), 12, (50, 80, 255), 3)
-        state = str(sample.get("attention_state") or "observing")
         task = str(sample.get("task") or "Anchor study")[:70]
         subtask = str(sample.get("subtask") or "")[:70]
-        cv2.rectangle(result, (0, 0), (result.shape[1], 72), (18, 24, 38), -1)
-        cv2.putText(result, f"REC {at_ms / 1000:06.1f}s  {state}", (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (230, 235, 255), 1, cv2.LINE_AA)
-        cv2.putText(result, task, (12, 43), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (190, 205, 255), 1, cv2.LINE_AA)
-        cv2.putText(result, subtask, (12, 63), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (170, 180, 205), 1, cv2.LINE_AA)
+        cv2.rectangle(result, (0, 0), (result.shape[1], 48), PANEL_BACKGROUND, -1)
+        cv2.putText(result, f"REC {at_ms / 1000:06.1f}s  {task}", (12, 20), FONT, 0.5, PANEL_TEXT, 1, cv2.LINE_AA)
+        cv2.putText(result, subtask, (12, 39), FONT, 0.42, PANEL_DIM, 1, cv2.LINE_AA)
+        self._draw_evidence_column(result, sample)
         return result
+
+    def _draw_evidence_column(self, result: np.ndarray, sample: Mapping[str, object]) -> None:
+        """Camera view with the eyes enlarged, plus the attention verdict, drawn down the right
+        edge so one recording shows the screen, the user's eyes and what Anchor concluded."""
+        height, width = result.shape[:2]
+        margin = 16
+        panel_width = int(min(max(width // 5, 240), 460))
+        if width < panel_width + 320 or height < 260:
+            return
+        left = width - panel_width - margin
+        top = 64
+        panel = self._safe_eye_panel(panel_width)
+        if panel is not None and getattr(panel, "size", 0):
+            panel = panel[: max(1, height - top - 200), :panel_width]
+            panel_height = panel.shape[0]
+            result[top : top + panel_height, left : left + panel.shape[1]] = panel
+            cv2.rectangle(result, (left, top), (left + panel_width, top + panel_height), (90, 120, 190), 1)
+            cv2.putText(result, "CAMERA + EYES", (left + 8, top + 18), FONT, 0.42, PANEL_TEXT, 1, cv2.LINE_AA)
+            top += panel_height + 10
+        else:
+            placeholder = 54
+            cv2.rectangle(result, (left, top), (left + panel_width, top + placeholder), PANEL_BACKGROUND, -1)
+            cv2.putText(result, "Camera off - no eye view", (left + 10, top + 32), FONT, 0.45, PANEL_DIM, 1, cv2.LINE_AA)
+            top += placeholder + 10
+
+        card = 128
+        cv2.rectangle(result, (left, top), (left + panel_width, top + card), PANEL_BACKGROUND, -1)
+        state = str(sample.get("attention_state") or "observing")
+        distraction = min(max(_number(sample.get("distraction_probability")), 0.0), 1.0)
+        attention_confidence = min(max(_number(sample.get("attention_confidence")), 0.0), 1.0)
+        colour = (90, 200, 120) if distraction < 0.4 else (70, 180, 240) if distraction < 0.7 else (80, 90, 240)
+        cv2.putText(result, state.upper(), (left + 10, top + 28), FONT, 0.7, colour, 2, cv2.LINE_AA)
+        _bar(result, left + 10, top + 46, panel_width - 20, "distraction", distraction, colour)
+        _bar(result, left + 10, top + 80, panel_width - 20, "confidence", attention_confidence, (150, 160, 200))
+        gaze_confidence = _number(sample.get("confidence"))
+        face = str(sample.get("face_present")).lower() in {"true", "1"}
+        gaze_text = f"gaze {gaze_confidence * 100:.0f}%" if face else "gaze unavailable"
+        cv2.putText(result, gaze_text, (left + 10, top + card - 8), FONT, 0.42, PANEL_DIM, 1, cv2.LINE_AA)
+
+    def _safe_eye_panel(self, width: int) -> Optional[np.ndarray]:
+        if self._eye_panel is None:
+            return None
+        try:
+            return self._eye_panel(width)
+        except Exception:  # noqa: BLE001 - a camera hiccup must not end the recording
+            return None
 
     def _fail(self, error_code: str) -> None:
         with self._lock:
@@ -373,6 +424,23 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
+
+
+def _bar(
+    image: np.ndarray,
+    left: int,
+    top: int,
+    width: int,
+    label: str,
+    value: float,
+    colour: tuple[int, int, int],
+) -> None:
+    cv2.putText(image, f"{label} {value * 100:.0f}%", (left, top + 10), FONT, 0.42, PANEL_TEXT, 1, cv2.LINE_AA)
+    bar_top = top + 16
+    cv2.rectangle(image, (left, bar_top), (left + width, bar_top + 10), (52, 60, 84), -1)
+    filled = int(width * value)
+    if filled > 0:
+        cv2.rectangle(image, (left, bar_top), (left + filled, bar_top + 10), colour, -1)
 
 
 def _number(value: object) -> float:

@@ -29,7 +29,7 @@ Safety controls:
 - Active prevention: gaze spotlight, peripheral dimming, low-relevance window firewall, intention gate, optional pointer guard, dynamic browser image blur, future-text masking, reversible animation suppression, and reversible HTML edits that delete off-task blocks and trim sentences in the focused browser.
 - Passive recovery: a Context Capsule saves the most recent safe task anchor before distraction. Manual and automatic recovery can show the prior location, last action, next step, recap, reopen, and smaller-step controls.
 - Reading support: progress tracking, large-skip detection, and repeated-phrase dwell detection.
-- Local study recording: Display 1 at 15 FPS with gaze point and task state composited into MP4, plus aligned event JSONL, gaze/sample CSV, summary JSON, and manifest JSON. Baseline mode senses but suppresses interventions.
+- Local study recording: Display 1 at 15 FPS with the gaze point, the attention state with its distraction rating and confidence, and — when the camera is open — the camera view with the eyes enlarged, all composited into one MP4 (**Record screen + eyes + rating** on the Camera page), plus aligned event JSONL, gaze/sample CSV, summary JSON, and manifest JSON. Baseline mode senses but suppresses interventions.
 - A **Compare recordings** control that compares one baseline and one Anchor-enabled summary without claiming clinical significance.
 - Local SQLite timeline and focus/recovery metrics, protected-window suppression, authenticated local IPC, watchdog release, and deterministic replay scenarios.
 
@@ -155,7 +155,7 @@ scripts                     build, verification, and demo
 - The release is unsigned; Windows may display an unknown-publisher warning.
 - Browser DOM editing requires the focused browser Anchor launches; pages opened in another browser profile are only treated by the desktop pixel overlay.
 - Object-level picture blur is available in browser pages; desktop apps receive safe dimming/spotlight overlays rather than OCR-based object segmentation.
-- Webcam video and audio are not recorded. The camera is used live for gaze inference; recording captures the desktop, gaze marker, task state, and structured events.
+- Audio is never recorded. The camera view is only written into a recording while the camera is open and you start one; the evidence clip then contains your face and eyes, so it stays in the local output folder unless you share it.
 - Gaze quality depends on lighting, camera placement, eyewear, and calibration. Missing or low-confidence gaze becomes `Unknown`; it is not treated as proof of distraction.
 - Site sign-in, DRM/protected pages, and secure Windows surfaces can limit interventions or recording.
 

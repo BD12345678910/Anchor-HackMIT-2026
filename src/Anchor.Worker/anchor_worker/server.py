@@ -298,6 +298,7 @@ class WorkerService(anchor_pb2_grpc.InferenceWorkerServicer):
             self._recorder = self._recording_factory(
                 fps=max(1, min(60, request.fps or 15)),
                 capture=capture,
+                eye_panel=self._gaze.eye_panel,
             )
             manifest = self._recorder.start(
                 request.output_directory,
