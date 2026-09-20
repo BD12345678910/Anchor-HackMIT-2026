@@ -39,8 +39,32 @@
     "ytd-watch-next-secondary-results-renderer",
   ];
 
+  const PROMO_PATTERN = /(advert|sponsor|promo|newsletter|trending|recommend|related|suggested|subscribe|shop|deal|banner)/i;
+  const PROMO_CONTAINERS = "aside, [role='complementary'], [class*='promo' i], [class*='advert' i], [id*='ad-' i],"
+    + " [class*='recommend' i], [class*='related' i], [class*='trending' i], [class*='newsletter' i], [class*='sidebar' i]";
+
   function clamp(value) {
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  }
+
+  function textAround(image) {
+    return [
+      image.alt,
+      image.title,
+      image.getAttribute?.("aria-label"),
+      image.closest?.("figure")?.textContent,
+      image.currentSrc ?? image.src,
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
+  /**
+   * Only positive evidence degrades a picture: promotional wording or an ad/recommendation
+   * container. A picture in the article is left alone even when its caption does not repeat the
+   * goal's words — it is usually the very thing being studied.
+   */
+  function isOffTaskImage(image) {
+    const marks = [image.className, image.id, textAround(image)].filter(Boolean).join(" ");
+    return Boolean(PROMO_PATTERN.test(marks) || image.closest?.(PROMO_CONTAINERS));
   }
 
   function classifyImage(input) {
@@ -86,6 +110,7 @@
     const viewportHeight = options.viewportHeight ?? globalScope.innerHeight ?? 1;
     const threshold = clamp(options.threshold ?? DEFAULT_THRESHOLD);
     const relevance = options.relevance ?? (() => 0.5);
+    const offTask = options.offTask ?? isOffTaskImage;
     let changed = 0;
     const candidates = [...new Set([
       ...root.querySelectorAll("img"),
@@ -106,6 +131,7 @@
         top: rectangle.top,
       });
       image.dataset.anchorDistractionScore = score.toFixed(3);
+      if (!offTask(image)) continue;
       if (score < threshold || image.dataset[FILTERED_ATTRIBUTE] === "true") continue;
       if (options.rewriteSource
         && downscaleImageSource(image, { factor: options.pixelFactor, createCanvas: options.createCanvas })) {
@@ -414,6 +440,7 @@
 
   return {
     classifyImage,
+    isOffTaskImage,
     isProtectedPage,
     shouldExcludeElement,
     applyImageFiltering,
