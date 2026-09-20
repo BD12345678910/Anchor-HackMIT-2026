@@ -36,14 +36,29 @@ public sealed class DesktopImageBlurService : IDisposable
     private string _status = "Off";
     private int _visibleRegions;
     private Scene? _scene;
+    private readonly Dictionary<string, PictureRelevance> _verdicts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingVerdicts = new(StringComparer.Ordinal);
+    private int _gradingInFlight;
+    private string _gradingSource = "not graded yet";
 
     /// <summary>What the sensing loop last learned about the front window; read by the blur thread.</summary>
     private sealed record Scene(
         DateTimeOffset At,
         bool WindowRelevant,
         string ProcessName,
-        IReadOnlyCollection<string> TaskTokens,
-        ScreenSnapshot? Screen);
+        string? WindowTitle,
+        string Goal,
+        string CurrentSubtask,
+        ScreenSnapshot? Screen)
+    {
+        public string PageKey => string.Join('|', Goal, CurrentSubtask, ProcessName, WindowTitle).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Grades pictures semantically (DeepSeek when configured, local vocabulary otherwise). Set by
+    /// the view model; verdicts are cached per page so the grader is asked once per new picture.
+    /// </summary>
+    public Func<PictureGradingRequest, CancellationToken, Task<PictureGrading>>? Grader { get; set; }
 
     public DesktopImageBlurService(Func<bool> shouldRun, Action<string, Exception> logError)
     {
@@ -72,12 +87,23 @@ public sealed class DesktopImageBlurService : IDisposable
 
     /// <summary>
     /// Tells the blur pass how the front window relates to the task so each picture can be treated
-    /// proportionally: softened when its caption is about the task, pixelated when it is unrelated
-    /// content, and turned into a coarse mosaic when the window is off-task or the picture is ad-shaped.
+    /// proportionally: softened when the grader says it illustrates the task, pixelated when it is
+    /// unrelated content, and turned into a coarse mosaic when the window is off-task or the picture is bait.
     /// </summary>
-    public void UpdateScene(bool windowRelevant, string? processName, IReadOnlyCollection<string> taskTokens, ScreenSnapshot? screen)
+    public void UpdateScene(bool windowRelevant, string? processName, string? windowTitle, string goal, string currentSubtask, ScreenSnapshot? screen)
     {
-        Volatile.Write(ref _scene, new Scene(DateTimeOffset.UtcNow, windowRelevant, processName ?? string.Empty, taskTokens, screen));
+        Volatile.Write(ref _scene, new Scene(DateTimeOffset.UtcNow, windowRelevant, processName ?? string.Empty, windowTitle, goal, currentSubtask, screen));
+    }
+
+    /// <summary>Forgets every picture verdict (new goal or plan).</summary>
+    public void ResetVerdicts()
+    {
+        lock (_verdicts)
+        {
+            _verdicts.Clear();
+            _pendingVerdicts.Clear();
+            _gradingSource = "not graded yet";
+        }
     }
 
     /// <summary>Re-evaluates immediately (after a toggle or session change) instead of waiting a tick.</summary>
@@ -193,7 +219,7 @@ public sealed class DesktopImageBlurService : IDisposable
         using var surface = Compose(capture, regions, treatments);
         window.Present(surface, bounds.Location);
         _visibleRegions = regions.Count;
-        Status = DescribeTreatments(treatments, processName);
+        Status = DescribeTreatments(treatments, processName, _gradingSource);
         return scan > SlowScanBackoff / 2 ? SlowScanBackoff : Interval;
     }
 
@@ -203,29 +229,113 @@ public sealed class DesktopImageBlurService : IDisposable
         var fresh = scene is not null && DateTimeOffset.UtcNow - scene.At <= SceneLifetime;
         // No session running (toolkit preview): nothing is known about the task, so use the
         // middle treatment except for ad-shaped pictures.
+        var sameWindow = fresh && string.Equals(scene!.ProcessName, processName, StringComparison.OrdinalIgnoreCase);
+        var screenMatches = sameWindow && scene!.Screen is { } shot
+            && string.Equals(shot.ProcessName, processName, StringComparison.OrdinalIgnoreCase);
         var context = !fresh
             ? new PictureSceneContext(true, [], [], windowSize.Width, windowSize.Height)
-            : string.Equals(scene!.ProcessName, processName, StringComparison.OrdinalIgnoreCase)
-            ? new PictureSceneContext(
-                scene.WindowRelevant,
-                scene.TaskTokens,
-                scene.Screen is { } screen && string.Equals(screen.ProcessName, processName, StringComparison.OrdinalIgnoreCase)
-                    ? screen.Lines
-                    : [],
-                windowSize.Width,
-                windowSize.Height)
+            : sameWindow
+            ? new PictureSceneContext(scene!.WindowRelevant, [], screenMatches ? scene.Screen!.Lines : [], windowSize.Width, windowSize.Height)
             : PictureSceneContext.OffTask(windowSize.Width, windowSize.Height);
 
+        var descriptors = new PictureDescriptor[regions.Count];
         var treatments = new PictureTreatment[regions.Count];
-        for (var i = 0; i < regions.Count; i++)
+        var missing = new List<PictureDescriptor>();
+        var pageKey = sameWindow ? scene!.PageKey : string.Empty;
+        lock (_verdicts)
         {
-            var r = regions[i];
-            treatments[i] = PictureTreatmentPlanner.Plan(new PixelRect(r.X, r.Y, r.Width, r.Height), context);
+            for (var i = 0; i < regions.Count; i++)
+            {
+                var r = regions[i];
+                descriptors[i] = PictureTreatmentPlanner.Describe(new PixelRect(r.X, r.Y, r.Width, r.Height), context);
+                PictureRelevance? verdict = null;
+                if (sameWindow && context.WindowRelevant)
+                {
+                    var cacheKey = pageKey + '|' + descriptors[i].Key;
+                    if (_verdicts.TryGetValue(cacheKey, out var known))
+                    {
+                        verdict = known;
+                    }
+                    // Grade only once the page text has been read, so the grader sees captions and
+                    // page content rather than a bare window title.
+                    else if (screenMatches && _pendingVerdicts.Add(cacheKey))
+                    {
+                        missing.Add(descriptors[i]);
+                    }
+                }
+                treatments[i] = PictureTreatmentPlanner.Plan(descriptors[i], context, verdict);
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            RequestGrading(scene!, missing);
         }
         return treatments;
     }
 
-    private static string DescribeTreatments(IReadOnlyList<PictureTreatment> treatments, string processName)
+    private void RequestGrading(Scene scene, List<PictureDescriptor> pictures)
+    {
+        if (Grader is not { } grader || Interlocked.CompareExchange(ref _gradingInFlight, 1, 0) != 0)
+        {
+            // Another request is in flight; release the reservations so the next tick retries.
+            lock (_verdicts)
+            {
+                foreach (var picture in pictures)
+                {
+                    _pendingVerdicts.Remove(scene.PageKey + '|' + picture.Key);
+                }
+            }
+            return;
+        }
+
+        var request = new PictureGradingRequest(
+            scene.Goal,
+            scene.CurrentSubtask,
+            scene.ProcessName,
+            scene.WindowTitle,
+            scene.Screen?.Excerpt ?? string.Empty,
+            pictures);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var grading = await grader(request, _cts.Token);
+                lock (_verdicts)
+                {
+                    foreach (var picture in pictures)
+                    {
+                        var cacheKey = scene.PageKey + '|' + picture.Key;
+                        _pendingVerdicts.Remove(cacheKey);
+                        if (grading.Verdicts.TryGetValue(picture.Key, out var verdict))
+                        {
+                            _verdicts[cacheKey] = verdict;
+                        }
+                    }
+                    _gradingSource = grading.IsFallback ? grading.Source : "graded by DeepSeek";
+                }
+                _wake.Set();
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                _logError("picture grading", error);
+                lock (_verdicts)
+                {
+                    foreach (var picture in pictures)
+                    {
+                        _pendingVerdicts.Remove(scene.PageKey + '|' + picture.Key);
+                    }
+                    _gradingSource = $"grading failed: {error.GetType().Name}";
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _gradingInFlight, 0);
+            }
+        });
+    }
+
+    private static string DescribeTreatments(IReadOnlyList<PictureTreatment> treatments, string processName, string gradingSource)
     {
         var softened = treatments.Count(static t => t == PictureTreatment.Soften);
         var pixelated = treatments.Count(static t => t == PictureTreatment.Pixelate);
@@ -243,7 +353,7 @@ public sealed class DesktopImageBlurService : IDisposable
         {
             parts.Add($"{mosaicked} off-task/ad-like mosaicked");
         }
-        return $"{string.Join(" · ", parts)} in {processName}";
+        return $"{string.Join(" · ", parts)} in {processName} · {gradingSource}";
     }
 
     private static Bitmap? Capture(IntPtr foreground, Rectangle bounds)

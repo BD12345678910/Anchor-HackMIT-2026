@@ -13,6 +13,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Ellipse Width="14" Height="14" Fill="#7C9CFF" VerticalAlignment="Center" />
             <Grid Grid.Column="1" RowSpacing="1">
@@ -28,6 +29,15 @@
                 <TextBlock Grid.Row="1" x:Name="SubtaskText" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Row="2" x:Name="GoalText" FontSize="12" Foreground="#9EABC8" TextTrimming="CharacterEllipsis" />
             </Grid>
+            <Button Grid.Column="2" x:Name="DoneButton" VerticalAlignment="Center" Padding="12,8" CornerRadius="10"
+                    Background="#2A7C9CFF" BorderBrush="#7C9CFF" Foreground="#F2F5FF"
+                    ToolTipService.ToolTip="Mark this step done (Anchor also ticks steps automatically from what is on screen)"
+                    Click="DoneButton_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE73E;" FontSize="14" />
+                    <TextBlock Text="Done" FontWeight="SemiBold" />
+                </StackPanel>
+            </Button>
         </Grid>
     </Border>
 </Window>

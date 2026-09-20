@@ -24,6 +24,12 @@ public interface ITaskIntelligence
         CancellationToken cancellationToken = default) =>
         Task.FromResult(LocalProgressJudge.Judge(evidence));
 
+    /// <summary>Grades each on-screen picture as illustrating the task, unrelated, or attention bait.</summary>
+    Task<PictureGrading> GradePicturesAsync(
+        PictureGradingRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(PictureTreatmentPlanner.LocalGrade(request));
+
     /// <summary>Phrases the "where you were" reminder for a frozen context capsule.</summary>
     Task<ContextReminder> ComposeReminderAsync(
         ContextCapsule capsule,

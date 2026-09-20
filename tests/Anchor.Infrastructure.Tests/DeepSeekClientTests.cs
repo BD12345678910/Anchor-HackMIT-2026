@@ -107,6 +107,90 @@ public sealed class DeepSeekClientTests
     }
 
     [Fact]
+    public async Task Relevance_sends_the_page_text_and_rejudges_once_text_is_available()
+    {
+        var handler = new CapturingHandler(_ => JsonResponse(
+            "{\"score\":0.9,\"classification\":\"relevant\",\"reason\":\"The article is about cats.\"}"));
+        var client = CreateClient(handler);
+        var titleOnly = new TaskContext("Learn about cats", "Read the Behaviour section", "chrome", "Cat - Wikipedia", "en.wikipedia.org", []);
+        var withText = titleOnly with { ScreenExcerpt = "The cat is a small domesticated carnivorous mammal. Behaviour: cats are crepuscular." };
+
+        await client.JudgeRelevanceAsync(titleOnly, CancellationToken.None);
+        Assert.Contains("(not yet read)", handler.LastBody);
+        await client.JudgeRelevanceAsync(withText, CancellationToken.None);
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Contains("crepuscular", handler.LastBody);
+        Assert.Contains("On-screen text", handler.LastBody);
+    }
+
+    [Theory]
+    [InlineData("timeout")]
+    [InlineData("bad-json")]
+    [InlineData("no-key")]
+    public async Task Relevance_fallback_never_declares_a_detour_on_its_own(string mode)
+    {
+        var handler = new CapturingHandler(_ => mode switch
+        {
+            "timeout" => throw new TaskCanceledException("timeout"),
+            _ => JsonResponse("{oops")
+        });
+        var client = mode == "no-key"
+            ? new DeepSeekClient(new HttpClient(handler), string.Empty, retryDelay: TimeSpan.Zero)
+            : CreateClient(handler);
+        var context = new TaskContext("Learn about cats", "Read the Behaviour section", "chrome", "Felis catus - Wikipedia", "en.wikipedia.org", [], "Domestic cat behaviour and ecology");
+
+        var judgment = await client.JudgeRelevanceAsync(context, CancellationToken.None);
+
+        Assert.True(judgment.IsFallback);
+        Assert.NotEqual(RelevanceClass.LikelyDetour, judgment.Classification);
+        Assert.True(judgment.Score >= 0.5);
+        Assert.Contains("Local rules", judgment.Reason);
+    }
+
+    [Fact]
+    public async Task GradePicturesAsync_parses_verdicts_sends_captions_and_caches_per_page()
+    {
+        var handler = new CapturingHandler(_ => JsonResponse(
+            """{"pictures":[{"index":1,"verdict":"illustrates"},{"index":2,"verdict":"unrelated"},{"index":3,"verdict":"bait"}]}"""));
+        var client = CreateClient(handler);
+        var cat = new PictureDescriptor("cat", "A tabby cat resting on a wall", false, 300, 200);
+        var harbour = new PictureDescriptor("harbour", "Photograph of a harbour at dusk", false, 300, 200);
+        var banner = new PictureDescriptor("banner", "Buy now", true, 728, 90);
+        var request = new PictureGradingRequest("Learn about cats", "Read the Behaviour section", "chrome", "Cat - Wikipedia",
+            "The cat is a small domesticated carnivorous mammal.", [cat, harbour, banner]);
+
+        var grading = await client.GradePicturesAsync(request, CancellationToken.None);
+        var again = await client.GradePicturesAsync(request with { Pictures = [cat, banner] }, CancellationToken.None);
+
+        Assert.False(grading.IsFallback);
+        Assert.Equal("DeepSeek", grading.Source);
+        Assert.Equal(PictureRelevance.Illustrates, grading.Verdicts["cat"]);
+        Assert.Equal(PictureRelevance.Unrelated, grading.Verdicts["harbour"]);
+        Assert.Equal(PictureRelevance.Bait, grading.Verdicts["banner"]);
+        Assert.Contains("tabby cat resting", handler.LastBody);
+        Assert.Contains("carnivorous mammal", handler.LastBody);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(PictureRelevance.Illustrates, again.Verdicts["cat"]);
+        Assert.Equal(PictureRelevance.Bait, again.Verdicts["banner"]);
+    }
+
+    [Fact]
+    public async Task GradePicturesAsync_falls_back_to_labelled_local_rules_on_failure()
+    {
+        var handler = new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var client = CreateClient(handler);
+        var cat = new PictureDescriptor("cat", "A tabby cat resting on a wall", false, 300, 200);
+        var request = new PictureGradingRequest("Learn about cats", "Read the Behaviour section", "chrome", "Cat - Wikipedia", "", [cat]);
+
+        var grading = await client.GradePicturesAsync(request, CancellationToken.None);
+
+        Assert.True(grading.IsFallback);
+        Assert.StartsWith("Local rules", grading.Source);
+        Assert.Equal(PictureRelevance.Illustrates, grading.Verdicts["cat"]);
+    }
+
+    [Fact]
     public async Task Missing_key_returns_local_fallback_without_network_request()
     {
         var handler = new CapturingHandler(_ => throw new InvalidOperationException("Network must not run."));

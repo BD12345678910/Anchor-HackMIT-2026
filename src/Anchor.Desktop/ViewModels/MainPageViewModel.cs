@@ -92,6 +92,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private bool _loadingPreferences;
     private ScreenSnapshot? _lastScreen;
     private DateTimeOffset _lastScreenRead = DateTimeOffset.MinValue;
+    private string? _lastScreenIdentity;
     private string? _lastJudgedScreenHash;
     private bool _screenJudgeInFlight;
     private readonly List<string> _screenEvidenceUsed = [];
@@ -114,6 +115,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _gazeTimer.Tick += GazeTimer_Tick;
         _recordingTimer.Tick += RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant += Overlays_CurrentWindowMarkedRelevant;
+        _services.Overlays.StepMarkedDoneFromBeacon += Overlays_StepMarkedDoneFromBeacon;
         _services.Overlays.OverlaysCleared += Overlays_Cleared;
         _services.Overlays.ImageBlur.StatusChanged += ImageBlur_StatusChanged;
         _services.Overlays.BreakdownProvider = BreakDownRecoveryStepAsync;
@@ -378,6 +380,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             _taskPlanner = await _services.CreateTaskPlannerAsync();
+            var planner = _taskPlanner;
+            _services.Overlays.ImageBlur.Grader = (request, token) => planner.GradePicturesAsync(request, token);
+            _services.Overlays.ImageBlur.ResetVerdicts();
             var state = await _taskPlanner.PlanAsync(TaskTitle);
             _plannedGoal = TaskTitle.Trim();
             _lastEvidenceTitle = null;
@@ -601,23 +606,32 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// Reads the front window's text with on-device OCR every few seconds while the user is on
-    /// task-relevant content. The snapshot feeds both the context capsule (what line they were on)
-    /// and screen-based progress detection.
+    /// Reads the front window's text with on-device OCR every few seconds, and immediately when a
+    /// new window comes to the front, so relevance can be judged from the page itself. Secure
+    /// windows are never read.
     /// </summary>
-    private async Task ReadScreenAsync(GazeSample? gaze, SensorWindow raw, DateTimeOffset now)
+    private async Task<ScreenSnapshot?> ReadScreenAsync(GazeSample? gaze, SensorWindow raw, DateTimeOffset now, TaskContext context)
     {
-        if (!_services.ScreenReader.IsAvailable || now - _lastScreenRead < ScreenReadInterval)
+        if (!_services.ScreenReader.IsAvailable || raw.IsSecureWindow)
         {
-            return;
+            return null;
+        }
+        var identity = ContextIdentity(context);
+        var newWindow = !string.Equals(identity, _lastScreenIdentity, StringComparison.Ordinal);
+        if (!newWindow && now - _lastScreenRead < ScreenReadInterval)
+        {
+            return null;
         }
         _lastScreenRead = now;
+        _lastScreenIdentity = identity;
         var snapshot = await _services.ScreenReader.ReadForegroundAsync(gaze, raw.IsSecureWindow);
         ScreenReaderStatus = _services.ScreenReader.Status;
-        if (snapshot is null)
-        {
-            return;
-        }
+        return snapshot;
+    }
+
+    /// <summary>Keeps a snapshot of task-relevant content for the capsule, trail and progress detection.</summary>
+    private void AdoptScreen(ScreenSnapshot snapshot, DateTimeOffset now)
+    {
         _lastScreen = snapshot;
         RecordTrail(snapshot, now);
         var anchorSource = snapshot.FocusSource switch
@@ -747,7 +761,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         var line = relevance is null
             ? $"relevance process={context.ProcessName} title=\"{context.WindowTitle}\" judge=none adapter={adapterRelevance:0.00}"
-            : $"relevance process={context.ProcessName} title=\"{context.WindowTitle}\" judge={(relevance.IsFallback ? "local" : "DeepSeek")} class={relevance.Classification} score={relevance.Score:0.00} adapter={adapterRelevance:0.00} reason=\"{relevance.Reason}\"";
+            : $"relevance process={context.ProcessName} title=\"{context.WindowTitle}\" text={(string.IsNullOrWhiteSpace(context.ScreenExcerpt) ? "none" : context.ScreenExcerpt.Length + "ch")} judge={(relevance.IsFallback ? "local" : "DeepSeek")} class={relevance.Classification} score={relevance.Score:0.00} adapter={adapterRelevance:0.00} reason=\"{relevance.Reason}\"";
         if (string.Equals(line, _lastRelevanceTrace, StringComparison.Ordinal))
         {
             return;
@@ -1174,6 +1188,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         _gazeTimer.Tick -= GazeTimer_Tick;
         _recordingTimer.Tick -= RecordingTimer_Tick;
         _services.Overlays.CurrentWindowMarkedRelevant -= Overlays_CurrentWindowMarkedRelevant;
+        _services.Overlays.StepMarkedDoneFromBeacon -= Overlays_StepMarkedDoneFromBeacon;
         _services.Overlays.OverlaysCleared -= Overlays_Cleared;
         _services.Overlays.ImageBlur.StatusChanged -= ImageBlur_StatusChanged;
         _services.Overlays.BreakdownProvider = null;
@@ -1225,6 +1240,19 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             ConsiderEvidence(context.WindowTitle, context.ProcessName);
             var userMarkedRelevant = TreatCurrentWindowAsRelevant
                 || _userRelevantTargets.Contains(ContextIdentity(context));
+            // Relevance is judged from what is actually on the page, so the text is read before
+            // the verdict; secure windows are never read.
+            var screen = await ReadScreenAsync(gaze, raw, now, context);
+            var visibleText = screen
+                ?? (_lastScreen is { } previous
+                    && string.Equals(previous.ProcessName, context.ProcessName, StringComparison.OrdinalIgnoreCase)
+                    && now - previous.Timestamp <= ScreenReadInterval * 3
+                    ? previous
+                    : null);
+            if (visibleText is not null && !raw.IsSecureWindow)
+            {
+                context = context with { ScreenExcerpt = visibleText.Excerpt };
+            }
             var relevance = _taskPlanner is null
                 ? null
                 : await _taskPlanner.JudgeRelevanceAsync(context);
@@ -1234,14 +1262,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     || relevance?.Classification == RelevanceClass.Relevant
                     || (relevance?.Classification == RelevanceClass.Ambiguous && raw.AppRelevance >= 0.5)
                     || (relevance is null && raw.AppRelevance >= 0.65));
-            if (contextIsSafe)
+            if (contextIsSafe && screen is not null)
             {
-                await ReadScreenAsync(gaze, raw, now);
+                AdoptScreen(screen, now);
             }
             _services.Overlays.ImageBlur.UpdateScene(
                 contextIsSafe,
                 context.ProcessName,
-                PictureTreatmentPlanner.TaskTokens(TaskTitle, CurrentSubtask, contextIsSafe ? context.WindowTitle : null),
+                contextIsSafe ? context.WindowTitle : null,
+                TaskTitle,
+                CurrentSubtask,
                 contextIsSafe ? _lastScreen : null);
             if (contextIsSafe)
             {
@@ -1417,6 +1447,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 status));
         }
     }
+
+    private void Overlays_StepMarkedDoneFromBeacon(object? sender, EventArgs e) =>
+        CompleteCurrentStep(CompletionSource.User, "ticked on the beacon");
 
     private void Overlays_CurrentWindowMarkedRelevant(object? sender, EventArgs e)
     {
