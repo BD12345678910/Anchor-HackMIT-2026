@@ -155,7 +155,7 @@ public sealed class AttentionAnalyzer
         {
             return bouts.Count == 0
                 ? "No completed focus bout yet — keep going."
-                : "Trend needs at least four focus bouts.";
+                : $"{bouts.Count} of the 4 focus bouts needed to compare early vs. late spans.";
         }
 
         var half = bouts.Count / 2;

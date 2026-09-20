@@ -31,7 +31,8 @@ try {
     & $python -m pytest 'src\Anchor.Worker\tests' -q -p no:cacheprovider --basetemp 'artifacts\pytest-release'
     if ($LASTEXITCODE -ne 0) { throw 'Python tests failed.' }
 
-    & node --test 'browser\anchor-extension\tests\*.test.mjs'
+    $browserTests = Get-ChildItem -LiteralPath 'browser\anchor-extension\tests' -Filter '*.test.mjs' | ForEach-Object FullName
+    & node --test @browserTests
     if ($LASTEXITCODE -ne 0) { throw 'Browser tests failed.' }
 
     & $dotnet run --project 'src\Anchor.Demo\Anchor.Demo.csproj' -c Release --no-restore -- all

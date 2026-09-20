@@ -359,13 +359,13 @@
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                         <Border Padding="12" CornerRadius="12" Background="#241C2941">
-                                            <StackPanel><TextBlock Text="Attention span (median / longest)" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.AttentionSpan, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" /></StackPanel>
+                                            <StackPanel><TextBlock Text="Attention span (median / longest)" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.AttentionSpan, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
                                         </Border>
                                         <Border Grid.Column="1" Padding="12" CornerRadius="12" Background="#241C2941">
-                                            <StackPanel><TextBlock Text="Distractions / hour · median recovery" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.DistractionRate, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" /></StackPanel>
+                                            <StackPanel><TextBlock Text="Distractions / hour · median recovery" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.DistractionRate, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
                                         </Border>
                                         <Border Grid.Column="2" Padding="12" CornerRadius="12" Background="#241C2941">
-                                            <StackPanel><TextBlock Text="Time on task" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.OnTaskShare, Mode=OneWay}" FontSize="20" FontWeight="SemiBold" /></StackPanel>
+                                            <StackPanel><TextBlock Text="Time on task" Style="{StaticResource Hint}" /><TextBlock Text="{x:Bind ViewModel.Analytics.OnTaskShare, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /></StackPanel>
                                         </Border>
                                     </Grid>
                                     <TextBlock Text="{x:Bind ViewModel.Analytics.Triggers, Mode=OneWay}" TextWrapping="Wrap" />
