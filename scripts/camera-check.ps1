@@ -32,6 +32,7 @@ if (-not $pnp) {
 
 Section 'WinRT video-capture enumeration (what Anchor.exe asks first)'
 try {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime -ErrorAction Stop
     $null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
     $op = [Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync([Windows.Devices.Enumeration.DeviceClass]::VideoCapture)
     $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
