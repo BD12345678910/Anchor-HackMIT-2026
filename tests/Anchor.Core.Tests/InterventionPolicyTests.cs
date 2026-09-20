@@ -82,4 +82,18 @@ public sealed class InterventionPolicyTests
 
         Assert.True(policy.CurrentThreshold > original);
     }
+
+    [Fact]
+    public void Patience_summary_explains_what_was_learned()
+    {
+        var policy = new InterventionPolicy();
+        Assert.Contains("nothing learned yet", policy.PatienceSummary, StringComparison.Ordinal);
+
+        policy.RecordResponse(InterventionResponse.Snoozed);
+        policy.RecordResponse(InterventionResponse.ReturnedToTask);
+
+        Assert.Contains("68%", policy.PatienceSummary.Replace(" ", string.Empty), StringComparison.Ordinal);
+        Assert.Contains("1 × \"not now\"", policy.PatienceSummary, StringComparison.Ordinal);
+        Assert.Contains("1 × \"take me back\"", policy.PatienceSummary, StringComparison.Ordinal);
+    }
 }

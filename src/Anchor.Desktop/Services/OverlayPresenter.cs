@@ -579,7 +579,7 @@ public sealed class OverlayPresenter : IInterventionPresenter, IRestrictiveInter
     {
         Close(ref _gate);
         _gate = new IntentionGateWindow();
-        _gate.SetPrompt(TaskTitle, CurrentSubtask, reason);
+        _gate.SetPrompt(TaskTitle, CurrentSubtask, reason, App.Services.Orchestrator.PatienceSummary);
         _gate.ReturnedToTask += (_, _) =>
         {
             App.Services.Orchestrator.RecordInterventionResponse(InterventionResponse.ReturnedToTask);

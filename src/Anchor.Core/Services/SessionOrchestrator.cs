@@ -62,6 +62,7 @@ public sealed class SessionOrchestrator
     public bool IsRunning => CurrentSession is not null;
     public string CapabilityStatus => _inference.IsAvailable ? "Multimodal" : "Deterministic";
     public double InterventionThreshold => _policy.CurrentThreshold;
+    public string PatienceSummary => _policy.PatienceSummary;
     public bool InterventionsEnabled { get; set; } = true;
     public event Action<InterventionDecision, ContextCapsule?>? InterventionPresented;
 
